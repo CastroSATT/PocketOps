@@ -6,14 +6,14 @@
 
 <p align="center">
   <strong>Firmware v0.2.1</strong> · LilyGO <a href="https://lilygo.cc/products/t-dongle-s3">T-Dongle-S3</a><br/>
-  USB stick · tiny screen · remote HID · microSD tool kit
+  USB stick · tiny screen · remote HID · on-device config · microSD tool kit
 </p>
 
 ---
 
-Plug it into USB-A, pick a tool on the screen, and use it as a remote keyboard/mouse (Wi‑Fi or Bluetooth). Flip **Expose** on and the host sees a `POCKETOPS` drive packed with field tools.
+Plug it into USB-A, pick a tool on the screen, and use it as a remote keyboard/mouse (Wi‑Fi or Bluetooth). Open the **web UI** for touchpad + full **Config** (network, mouse, SD, display, backup…). Flip **Expose** on and the host sees a FAT drive packed with field tools.
 
-**Plain English:** a smart USB stick with a screen. Your phone can drive the mouse/keyboard; the SD card can show up on the PC like a normal flash drive when you want it.
+**Plain English:** a smart USB stick with a screen. Your phone drives the mouse/keyboard; settings live on the stick (not buried in code); the SD card can show up like a normal flash drive when you want it.
 
 <p align="center">
   <img src="docs/images/hardware-tdongle-s3-angle.png" alt="T-Dongle-S3 angled view" width="240"/>
@@ -25,13 +25,30 @@ Plug it into USB-A, pick a tool on the screen, and use it as a remote keyboard/m
 
 ---
 
+## What’s new (v0.2.x)
+
+| Feature | Notes |
+| --- | --- |
+| **LittleFS settings** | Runtime `.ini` under `data/config/` — seed once, then edit on-device or via web |
+| **Modular web UI** | `data/www/` — **Remote** + **Config** tabs (served from the stick) |
+| **Wi‑Fi modes** | `ap` · `sta` · `apsta` — SoftAP, join LAN, or both |
+| **Wi‑Fi profiles** | Saved SSIDs/passwords, auto-join, SoftAP settings modal |
+| **Mouse / keyboard tune** | Touchpad speed, two-finger scroll, typing interval |
+| **SD from the web** | Expose toggle, folder list after Format, Format with progress (`/Logs` locked) |
+| **Display** | TFT brightness, screen sleep, status-LED brightness |
+| **Config backup** | Download / restore `.pobak` (all on-chip `.ini` + Wi‑Fi profiles) |
+| **Chip temp** | Shown in the Remote HID web meta / status path |
+| **Board config script** | `config/board.ini` → pins/TFT at build time |
+
+---
+
 ## On-screen UI
 
 160×80 ST7735 — frames match the live menu tree (scaled for the README).
 
 ### Boot & main menu
 
-Four tools on the root list: **WiFi Remote HID** · **BT Remote HID** · **BT Serial HID** · **TF Card**.
+Four tools: **WiFi Remote HID** · **BT Remote HID** · **BT Serial HID** · **TF Card**.
 
 | Splash | Menu (WiFi selected) | Menu (BT Serial) | Menu (TF Card) |
 | :---: | :---: | :---: | :---: |
@@ -45,7 +62,7 @@ Four tools on the root list: **WiFi Remote HID** · **BT Remote HID** · **BT Se
 
 ### TF Card tool
 
-Submenu: **Expose** · **Check card** · **Format card**.
+Submenu: **Expose** · **Check card** · **Format card** (also available under web **Config → SD**).
 
 | Submenu | Expose OFF | Expose ON |
 | :---: | :---: | :---: |
@@ -55,7 +72,7 @@ Submenu: **Expose** · **Check card** · **Format card**.
 | :---: | :---: | :---: |
 | <img src="docs/images/ui-check.png" alt="Check card" width="240"/> | <img src="docs/images/ui-format-confirm.png" alt="Format confirm" width="240"/> | <img src="docs/images/ui-format-ok.png" alt="Format OK" width="240"/> |
 
-> Cyan **SD** badge = Expose on (LED stays red — by design). Yellow flash = card busy over USB. Footer `1dn 2up holdOK 3bk` = BOOT gestures.
+> Cyan **SD** badge = Expose on (LED stays red in TF Card — by design). Yellow flash = card busy over USB. Footer `1dn 2up holdOK 3bk` = BOOT gestures.
 
 ---
 
@@ -66,33 +83,83 @@ Submenu: **Expose** · **Check card** · **Format card**.
 | Board | LilyGO **T-Dongle-S3** (ESP32-S3, 16 MB flash, **no PSRAM**) |
 | Display | 0.96″ ST7735 SPI, **160 × 80** |
 | LED | APA102 RGB (soft-bitbang; LCD SPI stays free) |
-| Storage | microSD via **SDMMC** |
+| Storage | microSD via **SDMMC** + on-chip **LittleFS** (settings + web UI) |
 | Button | **BOOT** (GPIO0) — only physical control |
 | USB | TinyUSB — CDC serial + HID keyboard/mouse + optional MSC |
 
-Full pin map, schematics, and LilyGO links: [`reference/`](reference/README.md).
+Full pin map / schematics: [`reference/`](reference/README.md) (local pack; bulky files gitignored).
 
 ---
 
 ## Tools
 
-Registered at boot in `src/app/App.cpp`:
-
 | Menu name | What it does |
 | --- | --- |
-| **WiFi Remote HID** | SoftAP + web UI. Join the AP and drive USB keyboard/mouse over WebSocket. |
-| **BT Remote HID** | BLE + Web Bluetooth page (`web/bt-remote.html`). Desktop Chrome (HTTPS). |
-| **BT Serial HID** | Nordic UART Service. iOS / serial BLE apps use `//key` / `//mouse` modes. |
-| **TF Card** | **Expose** · **Check card** · **Format card** |
+| **WiFi Remote HID** | Starts Wi‑Fi per mode + serves web UI. Touchpad / keys over WebSocket. |
+| **BT Remote HID** | BLE + Web Bluetooth page (`web/bt-remote.html` on a desktop Chrome HTTPS origin). |
+| **BT Serial HID** | Nordic UART Service — `//key` / `//mouse` from serial BLE apps. |
+| **TF Card** | **Expose** · **Check card** · **Format card** on the stick UI. |
 
-### SoftAP / BLE defaults (`include/config.h`)
+---
 
-| Setting | Default |
+## Web UI (Remote + Config)
+
+With **WiFi Remote HID** running, open the URL shown on the TFT (SoftAP default `http://192.168.4.1`).
+
+| Tab | Contents |
 | --- | --- |
-| SSID | `PocketOps` |
-| Password | `pocketops` |
-| HTTP / WebSocket | **80** / **81** |
-| BLE names | `PocketOps` · `PocketOps Serial` |
+| **Remote** | Touchpad, mouse buttons, hotkeys, live typing |
+| **Config → Network** | Wi‑Fi mode, SoftAP modal, scan/join, saved profiles |
+| **Config → Bluetooth** | BLE advertise names |
+| **Config → Mouse** | Touchpad / scroll speed, two-finger scroll, BT serial step |
+| **Config → Keyboard** | Character interval when typing/pasting |
+| **Config → SD** | Expose, card info, volume label, Format folder list, Format |
+| **Config → UI** | Splash text / duration |
+| **Config → Display** | TFT brightness, sleep seconds, LED brightness |
+| **Config → Backup** | Download / upload `.pobak` |
+
+Header badges: **Wi‑Fi mode** (AP / STA / AP+) and **SD** (expose), colour-matched to the stick LED/TFT.
+
+Source lives in `data/www/` (HTML/CSS/JS modules). Build embeds a seed via `scripts/embed_www_seed.py`; flash the filesystem with **uploadfs** (see below).
+
+---
+
+## Wi‑Fi modes & LED colours
+
+Set in `pocketops.ini` / Config → Network (`wifi_mode=`):
+
+| Mode | Behaviour | LED / badge |
+| --- | --- | --- |
+| **ap** | SoftAP hotspot only | Sky blue |
+| **sta** | Join a LAN only | Amber |
+| **apsta** | SoftAP + join | Alternates sky / amber when both live |
+
+BT Remote / BT Serial still use **violet** / **green** pulses. **TF Card** keeps the default **red** pulse — Expose is the on-screen **SD** badge only.
+
+---
+
+## Runtime config (LittleFS)
+
+PlatformIO `data/` → device LittleFS. Firmware **seeds missing files once**, then always reads from them.
+
+| File | Role |
+| --- | --- |
+| `data/config/pocketops.ini` | Wi‑Fi mode, SoftAP, STA last-join, HTTP/WS ports |
+| `data/config/pocketops_bt.ini` | BLE device names |
+| `data/config/pocketops_mouse.ini` | Touchpad / scroll / BT serial step |
+| `data/config/pocketops_keyboard.ini` | Typing interval |
+| `data/config/pocketops_folders.ini` | Volume label + Format folder list (`/Logs` always kept) |
+| `data/config/pocketops_ui.ini` | Splash text + ms |
+| `data/config/pocketops_display.ini` | Brightness + sleep + LED brightness |
+| `data/config/wifi_profiles.ini` | Saved networks (auto-join) |
+| `data/www/` | Remote HID web UI |
+
+### Compile-time only (rebuild firmware)
+
+| File | Role |
+| --- | --- |
+| `include/Branding.h` | Product name, **version**, remote title, BLE UUIDs, BOOT timings |
+| `config/board.ini` | GPIO + TFT → `scripts/apply_board_config.py` → generated headers |
 
 ---
 
@@ -111,62 +178,34 @@ On-screen hint: `1dn 2up holdOK 3bk`.
 
 ---
 
-## Status lights & SD badge
-
-The RGB LED is a **mode indicator for the HID tools only**. **TF Card / Expose does not change the LED** — it stays on the default red pulse (same as the menu). Expose status is shown only by the on-screen **SD** badge.
-
-| RGB LED | Meaning |
-| --- | --- |
-| **Red** pulse | Powered / menu / **TF Card** (including Expose on or off) |
-| **Sky blue** pulse | WiFi Remote HID |
-| **Violet** pulse | BT Remote HID |
-| **Green** pulse | BT Serial HID |
-
-| On-screen SD badge | Meaning |
-| --- | --- |
-| Cyan **SD** | Expose **on** (host can see the card) |
-| Yellow flashing **SD** | Expose on **and** recent SD R/W over USB |
-| No badge colour pop | Expose **off** |
-
-**Plain English:** coloured LED = which HID mode you’re in. Red LED during Expose is normal — watch the tiny **SD** badge for drive on/off. Yellow flash = the Mac is still reading/writing the card (Finder/Spotlight can keep that going after a sync).
-
-Expose on/off is saved in flash and restored on boot.
-
----
-
 ## TF Card / USB drive
 
 ### Expose
 
 1. Insert microSD  
-2. **TF Card → Expose**  
-3. **1×** toggles ON / OFF  
-4. Host mounts FAT volume **`POCKETOPS`**
+2. **TF Card → Expose** (or web **Config → SD**)  
+3. Toggle ON / OFF  
+4. Host mounts FAT volume (label from `pocketops_folders.ini`, default **PocketOps** / Finder often **POCKETOPS**)
 
-Expose-on uses a soft USB reconnect (no full reboot — Wi‑Fi/BLE stay up).
+Expose-on uses a soft USB reconnect (no full reboot — Wi‑Fi/BLE stay up). State is saved in NVS and restored on boot.
 
 ### Check card
 
-Type, size, free space, and whether PocketOps folders exist.
+Type, size, free space, and whether configured folders exist.
 
 ### Format card
 
-**Wipes the whole card.** Two confirms, then:
-
-1. Eject path if Expose was on  
-2. FAT format, label **`POCKETOPS`**  
-3. Creates `/Mac` `/PC` `/Linux` `/Logs` `/Audio`
-
-Turn Expose back on after format to remount on the Mac.
+**Wipes the whole card.** Creates folders from `pocketops_folders.ini` (defaults include `/Logs`, `/Mac`, `/PC`, `/Linux`, `/Audio`, `/Audio/Audio Tests`). **`/Logs` is required** for device logs and cannot be removed from the list.
 
 ---
 
 ## Card kit (`sdcard-layout/`)
 
-Folder skeleton is in git; downloaded binaries are **gitignored**. Sync onto a real card with the script.
+Folder skeleton + `README.txt` guides are in git; downloaded binaries are **gitignored**. Sync onto a real card with the scripts.
 
 ```
 sdcard-layout/
+├── README.txt
 ├── Mac/
 ├── PC/
 │   ├── Remote/         AnyDesk, RustDesk, TeamViewer QS, Chrome Remote Desktop
@@ -177,11 +216,12 @@ sdcard-layout/
 ├── Linux/
 ├── Logs/
 └── Audio/
+    └── Audio Tests/    (optional test clips — see folder README)
 ```
 
 ### Sync kit → stick
 
-Needs **Expose ON** and a volume labeled **`POCKETOPS`**. Unchanged files are skipped.
+Needs **Expose ON** and a volume labeled **`POCKETOPS`** (or your configured label). Unchanged files are skipped.
 
 **macOS**
 
@@ -189,31 +229,28 @@ Needs **Expose ON** and a volume labeled **`POCKETOPS`**. Unchanged files are sk
 ./scripts/sync-to-pocketops.sh
 ```
 
-**Windows** (double-click or from a prompt)
+**Windows**
 
 ```bat
 scripts\sync-to-pocketops.cmd
 ```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\sync-to-pocketops.ps1
-```
-
-Uses `robocopy /FFT` (FAT 2-second time fuzz) so the stick isn’t fully re-copied every run.
 
 ---
 
 ## Build & flash
 
 ```bash
-pio run -e T-Dongle-S3              # build
-pio run -e T-Dongle-S3 -t upload    # flash
-pio device monitor -e T-Dongle-S3   # 115200
+pio run -e T-Dongle-S3                 # build firmware
+pio run -e T-Dongle-S3 -t upload       # flash app
+pio run -e T-Dongle-S3 -t uploadfs     # flash LittleFS (config + www)
+pio device monitor -e T-Dongle-S3      # 115200
 ```
+
+After changing `data/config/*` or `data/www/*`, run **uploadfs** (or both upload + uploadfs on a fresh stick).
 
 If upload fails: **hold BOOT while plugging in**, then upload.
 
-`platformio.ini` forces **TinyUSB** (`ARDUINO_USB_MODE=0`) for HID + CDC — leave that alone if you want keyboard/mouse.
+`platformio.ini` forces **TinyUSB** (`ARDUINO_USB_MODE=0`) for HID + CDC.
 
 ---
 
@@ -223,17 +260,30 @@ If upload fails: **hold BOOT while plugging in**, then upload.
 PocketOps/
 ├── platformio.ini
 ├── boards/dongles3.json
-├── include/                 # board_pins.h, config.h
+├── config/board.ini              # GPIO / TFT (build-time)
+├── include/
+│   ├── Branding.h                # version, UUIDs, button timings
+│   ├── WifiModeUi.h              # shared AP/STA colours
+│   ├── board_pins.h / config.h
+│   └── generated/                # from board + www seed scripts
+├── data/
+│   ├── config/*.ini              # LittleFS settings
+│   └── www/                      # Remote + Config web UI
 ├── src/
 │   ├── app/ display/ input/ led/ hid/
-│   ├── storage/             # TfExpose MSC + format
-│   ├── ui/                  # main menu
-│   └── tools/               # one folder per tool
-├── scripts/sync-to-pocketops.sh|.ps1|.cmd
+│   ├── storage/                  # ConfigStore, TfExpose, WifiProfiles, ConfigBackup
+│   ├── system/                   # ChipTemp
+│   ├── ui/
+│   └── tools/
+├── scripts/
+│   ├── sync-to-pocketops.sh|.ps1|.cmd
+│   ├── apply_board_config.py
+│   ├── embed_www_seed.py
+│   └── split_www_modules.py
 ├── sdcard-layout/
-├── docs/images/             # README hardware + UI frames
-├── web/bt-remote.html
-└── reference/               # LilyGO hardware pack
+├── docs/images/
+├── web/bt-remote.html            # BT Web Bluetooth helper page
+└── reference/                    # LilyGO hardware pack (local)
 ```
 
 ### Adding a tool
@@ -244,22 +294,9 @@ PocketOps/
 
 ---
 
-## Config cheat sheet
-
-| Symbol | Role |
-| --- | --- |
-| `FIRMWARE_VERSION` / `SPLASH_MS` | Splash + Serial |
-| `WIFI_AP_*` / `WEB_PORT` / `WS_PORT` | Wi‑Fi Remote HID |
-| `BLE_*` / `BLE_SERIAL_*` / `BLE_NUS_*` | BLE tools |
-| `BTN_*` | Debounce / multi-tap / long-press |
-
-Pins: `include/board_pins.h`.
-
----
-
 ## Git
 
-Ignored: `.pio`, `.venv/`, VS Code noise, macOS junk, **kit binaries** under `sdcard-layout/**` (folders + `.gitkeep` kept), bulky **`reference/`** scrape (keeps `reference/README.md`).
+Ignored: `.pio`, `.venv/`, VS Code generated IntelliSense, macOS junk, **kit binaries** under `sdcard-layout/**` (keeps folders, `.gitkeep`, `README.txt`), bulky **`reference/`** scrape (keeps `reference/README.md`).
 
 ---
 
@@ -267,7 +304,8 @@ Ignored: `.pio`, `.venv/`, VS Code noise, macOS junk, **kit binaries** under `sd
 
 - **Format** erases the whole microSD.  
 - HID tools are a real keyboard/mouse — only on machines you may control.  
-- SoftAP password is a lab default; change it in `config.h` if needed.  
+- SoftAP password defaults to `pocketops` — change it under **Config → Network** / SoftAP modal before untrusted use.  
+- `.pobak` backups include Wi‑Fi passwords — treat like a secrets file.  
 - Respect vendor licenses for anything you drop into `sdcard-layout/`.
 
 ---
@@ -276,9 +314,11 @@ Ignored: `.pio`, `.venv/`, VS Code noise, macOS junk, **kit binaries** under `sd
 
 | Version | Notes |
 | --- | --- |
-| **0.1.0** | Splash; TF Expose/Check/Format (`POCKETOPS` + Mac/PC/Linux/Logs/Audio); Wi‑Fi + BLE HID; SD badge; sync script |
-| **0.2.0** | Modular web UI; SoftAP live row; Wi‑Fi mode badges (LED-matched); join UX / scan fixes; SoftAP-only dimmed networks |
-| **0.2.1** | Display config (brightness / sleep / LED); chip temp; SoftAP settings modal; SD Logs locked; badge / LED colour sync |
+| **0.1.0** | Splash; TF Expose/Check/Format; Wi‑Fi + BLE HID; SD badge; sync scripts |
+| **0.2.0** | Modular web UI; Wi‑Fi modes + profiles; Config tabs; SoftAP live UX |
+| **0.2.1** | Display brightness / sleep / LED; chip temp; SoftAP modal; SD `/Logs` locked; badge/LED colour sync; `.pobak` backup |
+
+---
 
 ## References
 
