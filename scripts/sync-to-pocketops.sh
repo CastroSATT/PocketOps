@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Copy sdcard-layout/{Mac,PC,Linux,Logs} onto a mounted POCKETOPS volume (macOS).
+# Copy sdcard-layout/{Mac,PC,Linux,Logs,Audio} onto a mounted POCKETOPS volume (macOS).
+# Windows twin: sync-to-pocketops.ps1 / sync-to-pocketops.cmd
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,6 +33,12 @@ DEST="$(find_volume)" || {
 
 echo "Source: $SRC"
 echo "Dest:   $DEST"
+
+# Top-level kit guide (not inside Mac/PC/…)
+if [[ -f "$SRC/README.txt" ]]; then
+  cp -f "$SRC/README.txt" "$DEST/README.txt"
+  echo "  synced README.txt"
+fi
 
 for name in "${FOLDERS[@]}"; do
   mkdir -p "$DEST/$name"

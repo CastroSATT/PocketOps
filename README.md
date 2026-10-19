@@ -179,13 +179,27 @@ sdcard-layout/
 └── Audio/
 ```
 
-### Sync (macOS)
+### Sync kit → stick
+
+Needs **Expose ON** and a volume labeled **`POCKETOPS`**. Unchanged files are skipped.
+
+**macOS**
 
 ```bash
 ./scripts/sync-to-pocketops.sh
 ```
 
-Needs **Expose ON** and `/Volumes/POCKETOPS` mounted. Uses `rsync --update --modify-window=2` so unchanged files are skipped.
+**Windows** (double-click or from a prompt)
+
+```bat
+scripts\sync-to-pocketops.cmd
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\sync-to-pocketops.ps1
+```
+
+Uses `robocopy /FFT` (FAT 2-second time fuzz) so the stick isn’t fully re-copied every run.
 
 ---
 
@@ -215,7 +229,7 @@ PocketOps/
 │   ├── storage/             # TfExpose MSC + format
 │   ├── ui/                  # main menu
 │   └── tools/               # one folder per tool
-├── scripts/sync-to-pocketops.sh
+├── scripts/sync-to-pocketops.sh|.ps1|.cmd
 ├── sdcard-layout/
 ├── docs/images/             # README hardware + UI frames
 ├── web/bt-remote.html

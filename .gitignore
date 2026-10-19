@@ -12,12 +12,10 @@ Thumbs.db
 *.swp
 *~
 
-# Nested scratch builds
-scratch/**/.pio
-
-# Card kit payloads (keep folder skeleton via .gitkeep)
+# Card kit payloads (keep folder skeleton + README.txt; ignore binaries)
 sdcard-layout/**/*
 !sdcard-layout/**/
 !sdcard-layout/**/.gitkeep
+!sdcard-layout/**/README.txt
 
 .venv/
