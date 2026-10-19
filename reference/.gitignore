@@ -1,0 +1,6 @@
+# Local LilyGO hardware pack (PDFs, shop images, scraped wiki) — keep off git.
+# README stays so the folder’s purpose is clear in the repo.
+*
+
+!.gitignore
+!README.md

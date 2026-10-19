@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>PocketOps BT Remote</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,sans-serif;background:#0f1419;color:#e7ecf1}
+header{padding:12px 14px;background:#1a2330;display:flex;justify-content:space-between;align-items:center;gap:8px}
+header h1{margin:0;font-size:16px}
+#status{font-size:12px;color:#8aa;white-space:nowrap}
+main{padding:12px;display:flex;flex-direction:column;gap:12px}
+#pad{height:42vh;min-height:180px;border:1px solid #2b3a4a;border-radius:12px;background:linear-gradient(180deg,#15202b,#0f1419);touch-action:none;position:relative}
+#pad:after{content:"TOUCHPAD";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#314556;font-size:14px;pointer-events:none}
+.row{display:flex;gap:8px}
+button,.key{flex:1;padding:12px;border:0;border-radius:10px;background:#243447;color:#e7ecf1;font-size:14px}
+button:active,.key:active{background:#3a5675}
+button:disabled{opacity:.45}
+#keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+input#text{width:100%;padding:12px;border-radius:10px;border:1px solid #2b3a4a;background:#101820;color:#e7ecf1;font-size:16px}
+.hint{font-size:11px;color:#6b7;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>PocketOps BT Remote</h1>
+  <span id="status">disconnected</span>
+</header>
+<main>
+  <div class="row">
+    <button id="connect">Connect Bluetooth</button>
+  </div>
+  <div id="pad"></div>
+  <div class="row">
+    <button id="lbtn">Left</button>
+    <button id="rbtn">Right</button>
+    <button id="mbtn">Middle</button>
+  </div>
+  <div id="keys">
+    <button data-k="8">Backspace</button>
+    <button data-k="13">Enter</button>
+    <button data-k="27">Esc</button>
+    <button data-k="9">Tab</button>
+    <button data-k="37">←</button>
+    <button data-k="39">→</button>
+    <button data-k="38">↑</button>
+    <button data-k="40">↓</button>
+    <button data-k="32">Space</button>
+  </div>
+  <input id="text" placeholder="Type live…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+  <p class="hint">Desktop Chrome · tap pad = left click · serve this file over localhost/HTTPS</p>
+</main>
+<script>
+const SERVICE_UUID='6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const CHAR_UUID='6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const statusEl=document.getElementById('status');
+const text=document.getElementById('text');
+const connectBtn=document.getElementById('connect');
+let device=null,characteristic=null,lx=0,ly=0,active=false,sx=0,sy=0,downT=0,moved=false;
+const TAP_MS=280,TAP_PX=14;
+const special={Backspace:8,Enter:13,Tab:9,Escape:27,ArrowLeft:37,ArrowRight:39,ArrowUp:38,ArrowDown:40,' ':32};
+const enc=new TextEncoder();
+
+function setStatus(msg,ok){
+  statusEl.textContent=msg;
+  statusEl.style.color=ok===true?'#6d6':ok===false?'#d86':'#8aa';
+}
+
+async function send(o){
+  if(!characteristic)return;
+  try{
+    await characteristic.writeValueWithoutResponse(enc.encode(JSON.stringify(o)));
+  }catch(e){
+    try{await characteristic.writeValue(enc.encode(JSON.stringify(o)));}
+    catch(_){setStatus('write failed',false);}
+  }
+}
+
+function onDisconnected(){
+  characteristic=null;
+  device=null;
+  connectBtn.textContent='Connect Bluetooth';
+  setStatus('disconnected',false);
+}
+
+async function connect(){
+  if(!navigator.bluetooth){
+    setStatus('Web Bluetooth unavailable',false);
+    return;
+  }
+  try{
+    setStatus('picking device…');
+    device=await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:'PocketOps'}],
+      optionalServices:[SERVICE_UUID]
+    });
+    device.addEventListener('gattserverdisconnected',onDisconnected);
+    setStatus('connecting…');
+    const server=await device.gatt.connect();
+    const service=await server.getPrimaryService(SERVICE_UUID);
+    characteristic=await service.getCharacteristic(CHAR_UUID);
+    connectBtn.textContent='Disconnect';
+    setStatus('connected',true);
+    text.focus();
+  }catch(e){
+    onDisconnected();
+    setStatus(e&&e.name==='NotFoundError'?'cancelled':'connect failed',false);
+  }
+}
+
+connectBtn.addEventListener('click',async()=>{
+  if(device&&device.gatt&&device.gatt.connected){
+    device.gatt.disconnect();
+    onDisconnected();
+    return;
+  }
+  await connect();
+});
+
+const pad=document.getElementById('pad');
+function pos(e){const t=e.touches?e.touches[0]:e;return [t.clientX,t.clientY]}
+function leftClick(){send({t:'b',b:0,s:1});send({t:'b',b:0,s:0})}
+pad.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  active=true;moved=false;downT=Date.now();
+  pad.setPointerCapture(e.pointerId);
+  [lx,ly]=pos(e);sx=lx;sy=ly;
+});
+pad.addEventListener('pointerup',()=>{
+  if(active&&!moved&&(Date.now()-downT)<=TAP_MS)leftClick();
+  active=false;
+});
+pad.addEventListener('pointercancel',()=>{active=false});
+pad.addEventListener('pointermove',e=>{
+  if(!active)return;
+  const [x,y]=pos(e);
+  if(Math.abs(x-sx)>TAP_PX||Math.abs(y-sy)>TAP_PX)moved=true;
+  let dx=Math.round(x-lx),dy=Math.round(y-ly);
+  lx=x;ly=y;
+  if(dx||dy){
+    dx=Math.max(-127,Math.min(127,dx));
+    dy=Math.max(-127,Math.min(127,dy));
+    send({t:'m',dx,dy});
+  }
+});
+function bindBtn(id,btn){
+  const el=document.getElementById(id);
+  el.addEventListener('pointerdown',e=>{e.preventDefault();send({t:'b',b:btn,s:1})});
+  el.addEventListener('pointerup',e=>{e.preventDefault();send({t:'b',b:btn,s:0})});
+  el.addEventListener('pointercancel',()=>send({t:'b',b:btn,s:0}));
+}
+bindBtn('lbtn',0);bindBtn('rbtn',1);bindBtn('mbtn',2);
+document.querySelectorAll('#keys button').forEach(el=>{
+  el.addEventListener('click',()=>{send({t:'k',k:parseInt(el.dataset.k,10)});text.focus()});
+});
+text.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  if(special[e.key]!=null){e.preventDefault();send({t:'k',k:special[e.key]});return;}
+  if(e.key.length===1){e.preventDefault();send({t:'x',v:e.key});}
+});
+text.addEventListener('input',()=>{
+  const v=text.value;
+  if(!v)return;
+  send({t:'x',v});
+  text.value='';
+});
+</script>
+</body>
+</html>
