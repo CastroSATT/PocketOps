@@ -1,9 +1,9 @@
 #include "app/App.h"
 
-#include "board_pins.h"
-#include "config.h"
 #include "display/Display.h"
 #include "led/RgbLed.h"
+#include "Branding.h"
+#include "storage/ConfigStore.h"
 #include "storage/TfExpose.h"
 #include "tools/ToolRegistry.h"
 #include "tools/bt_remote_hid/BtRemoteHidTool.h"
@@ -30,18 +30,30 @@ void registerTools() {
 
 namespace app {
 
-App::App() : button_(pins::BOOT_BTN) {}
+App::App() : button_(-1) {}
 
 void App::begin() {
   Serial.begin(115200);
   delay(300);
-  Serial.printf("PocketOps boot v%s\n", config::FIRMWARE_VERSION);
 
-  display::begin();
-  display::splash();
-  delay(config::SPLASH_MS);
+  auto& cfg = storage::ConfigStore::instance();
+  cfg.begin();
+  cfg.loadSettings();
+  cfg.loadBluetooth();
+  cfg.loadMouse();
+  cfg.loadKeyboard();
+  cfg.loadFormatFolders();
+  cfg.loadUi();
+  cfg.loadDisplay();
+  Serial.printf("%s boot v%s\n", cfg.productName(), branding::kFirmwareVersion);
 
   led::RgbLed::instance().begin();
+  display::begin();
+  display::applyFromConfig();
+  led::RgbLed::instance().setBrightnessPercent(cfg.lightBrightness());
+  display::splash();
+  delay(cfg.splashMs());
+
   registerTools();
   // Register MSC interface, then restore saved TF expose on/off.
   storage::TfExpose::instance().loadSaved();
@@ -53,6 +65,7 @@ void App::begin() {
   state_ = State::Menu;
   active_ = nullptr;
   syncMenuLed();
+  display::noteActivity();
 
   Serial.printf("Tools registered: %d\n", tools::ToolRegistry::instance().count());
 }
@@ -80,11 +93,15 @@ void App::loop() {
   }
 
   led::RgbLed::instance().update();
-  display::tickStatusIcons();
+  display::tickPower();
+  if (!display::asleep()) {
+    display::tickStatusIcons();
+  }
 }
 
 void App::onButton(input::Event event) {
   Serial.printf("btn %s\n", input::toString(event));
+  display::noteActivity();
 
   if (state_ == State::Menu) {
     switch (event) {

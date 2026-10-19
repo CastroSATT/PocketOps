@@ -1,6 +1,7 @@
 #include "ui/Menu.h"
 
 #include "display/Display.h"
+#include "storage/ConfigStore.h"
 
 namespace ui {
 
@@ -42,7 +43,7 @@ void Menu::draw() const {
   auto& reg = tools::ToolRegistry::instance();
 
   display::clear();
-  display::statusBar("PocketOps");
+  display::statusBar(storage::ConfigStore::instance().productName());
 
   tft.setTextFont(1);
   tft.setTextDatum(ML_DATUM);

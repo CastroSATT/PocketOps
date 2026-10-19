@@ -5,9 +5,9 @@
 #include <BLEUtils.h>
 #include <cstring>
 
-#include "config.h"
 #include "hid/HidProtocol.h"
 #include "hid/UsbHid.h"
+#include "storage/ConfigStore.h"
 
 namespace {
 
@@ -62,20 +62,22 @@ void BleHidServer::begin() {
   g_ble = this;
   clients_ = 0;
 
-  BLEDevice::init(config::BLE_DEVICE_NAME);
+  auto& cfg = storage::ConfigStore::instance();
+  cfg.loadSettings();
+  BLEDevice::init(cfg.bleDeviceName());
   g_server = BLEDevice::createServer();
   g_server->setCallbacks(&g_server_cb);
 
-  BLEService* service = g_server->createService(config::BLE_SERVICE_UUID);
+  BLEService* service = g_server->createService(cfg.bleServiceUuid());
   g_char = service->createCharacteristic(
-      config::BLE_CHAR_UUID,
+      cfg.bleCharUuid(),
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   g_char->setCallbacks(&g_char_cb);
 
   service->start();
 
   BLEAdvertising* advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(config::BLE_SERVICE_UUID);
+  advertising->addServiceUUID(cfg.bleServiceUuid());
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Firmware v0.1.0</strong> · LilyGO <a href="https://lilygo.cc/products/t-dongle-s3">T-Dongle-S3</a><br/>
+  <strong>Firmware v0.2.1</strong> · LilyGO <a href="https://lilygo.cc/products/t-dongle-s3">T-Dongle-S3</a><br/>
   USB stick · tiny screen · remote HID · microSD tool kit
 </p>
 
@@ -277,6 +277,8 @@ Ignored: `.pio`, `.venv/`, VS Code noise, macOS junk, **kit binaries** under `sd
 | Version | Notes |
 | --- | --- |
 | **0.1.0** | Splash; TF Expose/Check/Format (`POCKETOPS` + Mac/PC/Linux/Logs/Audio); Wi‑Fi + BLE HID; SD badge; sync script |
+| **0.2.0** | Modular web UI; SoftAP live row; Wi‑Fi mode badges (LED-matched); join UX / scan fixes; SoftAP-only dimmed networks |
+| **0.2.1** | Display config (brightness / sleep / LED); chip temp; SoftAP settings modal; SD Logs locked; badge / LED colour sync |
 
 ## References
 

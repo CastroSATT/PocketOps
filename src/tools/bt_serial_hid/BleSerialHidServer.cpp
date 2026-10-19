@@ -6,11 +6,12 @@
 #include <BLEUtils.h>
 #include <cstring>
 
+#include "Branding.h"
 #include "USBHIDKeyboard.h"
 #include "USBHIDMouse.h"
-#include "config.h"
 #include "hid/HidProtocol.h"
 #include "hid/UsbHid.h"
+#include "storage/ConfigStore.h"
 
 namespace {
 
@@ -142,7 +143,12 @@ void BleSerialHidServer::sendModeBanner() {
 }
 
 void BleSerialHidServer::sendHelp() {
-  notifyLine("PocketOps Serial\n");
+  {
+    char banner[64];
+    snprintf(banner, sizeof(banner), "%s\n",
+             branding::kBleSerialBanner);
+    notifyLine(banner);
+  }
   notifyLine("--- commands ---\n");
   notifyLine("//key\n");
   notifyLine(" live typing mode\n");
@@ -274,7 +280,7 @@ bool BleSerialHidServer::trySpecialKey(const char* cmd) {
 
 bool BleSerialHidServer::handleMouseChar(char c) {
   auto& h = hid::UsbHid::instance();
-  const int8_t step = config::BLE_SERIAL_MOUSE_STEP;
+  const int8_t step = storage::ConfigStore::instance().bleSerialMouseStep();
   switch (c) {
     case 'w':
     case 'W':
@@ -465,19 +471,23 @@ void BleSerialHidServer::begin() {
   welcome_at_ms_ = 0;
   mode_ = SerialMode::Menu;
 
-  BLEDevice::init(config::BLE_SERIAL_DEVICE_NAME);
+  auto& cfg = storage::ConfigStore::instance();
+  cfg.loadSettings();
+  cfg.loadBluetooth();
+  cfg.loadMouse();
+  BLEDevice::init(cfg.bleSerialDeviceName());
   g_server = BLEDevice::createServer();
   g_server->setCallbacks(&g_server_cb);
 
-  BLEService* service = g_server->createService(config::BLE_NUS_SERVICE_UUID);
+  BLEService* service = g_server->createService(cfg.bleNusServiceUuid());
 
   g_rx = service->createCharacteristic(
-      config::BLE_NUS_RX_UUID,
+      cfg.bleNusRxUuid(),
       BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   g_rx->setCallbacks(&g_rx_cb);
 
   g_tx = service->createCharacteristic(
-      config::BLE_NUS_TX_UUID,
+      cfg.bleNusTxUuid(),
       BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
   g_cccd = new BLE2902();
   g_cccd->setCallbacks(&g_cccd_cb);
@@ -486,7 +496,7 @@ void BleSerialHidServer::begin() {
   service->start();
 
   BLEAdvertising* advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(config::BLE_NUS_SERVICE_UUID);
+  advertising->addServiceUUID(cfg.bleNusServiceUuid());
   advertising->setScanResponse(true);
   advertising->setMinPreferred(0x06);
   advertising->setMinPreferred(0x12);

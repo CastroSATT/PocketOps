@@ -1,7 +1,7 @@
 #include "tools/bt_serial_hid/BtSerialHidTool.h"
 
-#include "config.h"
 #include "display/Display.h"
+#include "storage/ConfigStore.h"
 
 namespace tools {
 
@@ -40,7 +40,8 @@ void BtSerialHidTool::draw() {
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
 
   char line[40];
-  snprintf(line, sizeof(line), "BLE: %s", config::BLE_SERIAL_DEVICE_NAME);
+  snprintf(line, sizeof(line), "BLE: %s",
+           storage::ConfigStore::instance().bleSerialDeviceName());
   tft.drawString(line, 4, 18);
 
   tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);

@@ -1,0 +1,179 @@
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,sans-serif;background:#0f1419;color:#e7ecf1}
+header{padding:10px 12px;background:#1a2330;display:flex;justify-content:space-between;align-items:center;gap:8px}
+header h1{margin:0;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+#status{font-size:11px;color:#8aa;white-space:nowrap}
+#wifi-mode-badge{
+  display:none;font-size:11px;font-weight:700;letter-spacing:.02em;
+  padding:2px 7px;border-radius:4px;background:#008cff;color:#041016;line-height:1.2
+}
+#wifi-mode-badge.on{display:inline-block}
+/* Match APA102 Wi-Fi mode LED (WifiModeUi.h): AP sky / STA amber / AP+ alternates */
+#wifi-mode-badge[data-mode="ap"]{background:#008cff;color:#041016}
+#wifi-mode-badge[data-mode="sta"]{background:#ff8c28;color:#041016}
+#wifi-mode-badge[data-mode="apsta"]{
+  color:#041016;
+  animation:wifi-apsta-alt 1.5s steps(1,end) infinite
+}
+@keyframes wifi-apsta-alt{
+  0%,49.999%{background:#008cff}
+  50%,100%{background:#ff8c28}
+}
+#sd-badge{
+  display:none;font-size:11px;font-weight:700;letter-spacing:.02em;
+  padding:2px 7px;border-radius:4px;background:#facc15;color:#041016;line-height:1.2
+}
+#sd-badge.on{display:inline-block}
+#sd-badge.flash{background:#ef4444;color:#fff}
+.tabs{display:flex;gap:4px;padding:8px 10px;background:#121a24;border-bottom:1px solid #243447}
+.subtabs{
+  display:flex;flex-wrap:nowrap;gap:4px;padding:8px 10px;background:#121a24;
+  border-bottom:1px solid #243447;overflow-x:auto;-webkit-overflow-scrolling:touch
+}
+.tabs button,.subtabs button,.cfg-actions button,.icon-btn{padding:8px 12px;border:0;border-radius:8px;background:#243447;color:#e7ecf1;font-size:13px;white-space:nowrap}
+.subtabs button{padding:7px 10px;font-size:12px;flex-shrink:0}
+.tabs button.active,.subtabs button.active{background:#3a5675}
+.panel{display:none}
+.panel.active{display:block}
+#panel-remote main{padding:12px;display:flex;flex-direction:column;gap:12px}
+#pad{height:38vh;min-height:160px;border:1px solid #2b3a4a;border-radius:12px;background:linear-gradient(180deg,#15202b,#0f1419);touch-action:none;position:relative}
+#pad:after{content:"TOUCHPAD";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#314556;font-size:14px;pointer-events:none}
+.row{display:flex;gap:8px}
+#panel-remote button,#keys button{flex:1;padding:12px;border:0;border-radius:10px;background:#243447;color:#e7ecf1;font-size:14px}
+#panel-remote button:active{background:#3a5675}
+#keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+input#text{width:100%;padding:12px;border-radius:10px;border:1px solid #2b3a4a;background:#101820;color:#e7ecf1;font-size:16px}
+.hint{font-size:11px;color:#6b7;text-align:center;margin:0}
+#panel-config{padding:10px;display:none;flex-direction:column;gap:8px;min-height:70vh;min-width:0;overflow-x:hidden}
+#panel-config.active{display:flex}
+#cfg-meta{font-size:11px;color:#8aa;margin:0;overflow-wrap:anywhere}
+.cfg-view{display:none;flex-direction:column;gap:10px;flex:1;min-height:0;min-width:0}
+.cfg-view.active{display:flex}
+.cfg-scroll{flex:1;overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:4px;min-width:0}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:11px;color:#8aa}
+.field input,.folder-row input{
+  width:100%;max-width:100%;padding:10px;border-radius:8px;border:1px solid #2b3a4a;background:#101820;color:#e7ecf1;font-size:14px
+}
+.field input.range{
+  width:100%;max-width:100%;min-width:0;padding:0;margin:0;height:28px;
+  accent-color:#3a7a55;background:transparent;border:0
+}
+.range-val{color:#c5d0da;font-weight:600}
+.device-status{border:1px solid #2b3a4a;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;background:#121820;min-width:0}
+.device-status p{margin:0;font-size:12px;line-height:1.45;color:#c5d0da;overflow-wrap:anywhere}
+.section-title{font-size:12px;color:#9ab;margin:4px 0 0;font-weight:600}
+.folder-row{display:flex;gap:6px;align-items:center}
+.folder-row input{flex:1}
+.folder-row.locked input{opacity:.85;color:#9ab}
+.folder-lock{
+  flex-shrink:0;min-width:40px;padding:10px 8px;border-radius:8px;
+  background:#1a2430;color:#6b7;font-size:11px;text-align:center;user-select:none
+}
+.icon-btn{min-width:40px;padding:10px}
+.icon-btn.danger{background:#4a2a2a}
+.icon-btn.join-busy{background:#3a5675;opacity:.95;cursor:wait}
+.icon-btn.join-ok{background:#2a5a3a}
+.icon-btn.join-err{background:#5a2a2a}
+.icon-btn.join-warn{background:#5a4a2a}
+.cfg-actions{display:flex;gap:8px;flex-wrap:wrap}
+.cfg-actions button.danger{background:#5a2a2a}
+.format-box{border:1px solid #4a2a2a;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;background:#181012}
+.format-box p{margin:0;font-size:12px;color:#c99}
+.fmt-progress{display:flex;flex-direction:column;gap:6px}
+.fmt-progress[hidden]{display:none!important}
+.fmt-pct-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px}
+#fmt-pct{font-weight:700;color:#e7ecf1;font-variant-numeric:tabular-nums}
+#fmt-status{color:#9ab;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fmt-bar{height:10px;border:1px solid #4a5560;border-radius:2px;background:#0f1419;overflow:hidden}
+.fmt-bar-fill{height:100%;width:0%;background:#22c55e;transition:width .15s linear}
+.backup-box{border:1px solid #2b3a4a;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;background:#121820}
+.backup-box .icon-btn{align-self:flex-start}
+.sd-status{border:1px solid #2b3a4a;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;background:#121820}
+.sd-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sd-row span{font-size:12px;color:#8aa}
+.switch{position:relative;width:46px;height:26px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:#314556;border-radius:26px;cursor:pointer;transition:.15s}
+.switch .slider:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#e7ecf1;border-radius:50%;transition:.15s}
+.switch input:checked+.slider{background:#3a7a55}
+.switch input:checked+.slider:before{transform:translateX(20px)}
+.switch input:disabled+.slider{opacity:.5;cursor:wait}
+#sd-info,#wifi-status{margin:0;font-size:12px;line-height:1.45;color:#c5d0da;white-space:pre-wrap}
+#sd-info.missing,#wifi-status.bad{color:#d86}
+#sd-info.ok,#wifi-status.ok{color:#9cba9c}
+.wifi-box{border:1px solid #2b3a4a;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;background:#121820}
+.wifi-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wifi-head .section-title{margin:0;flex:1}
+.wifi-scan-btn{
+  flex-shrink:0;width:36px;height:36px;padding:0;border:0;border-radius:8px;
+  background:#243447;color:#e7ecf1;font-size:18px;line-height:1;cursor:pointer
+}
+.wifi-scan-btn:active{background:#3a5675}
+.wifi-scan-btn:disabled{opacity:.5;cursor:wait}
+.wifi-scan-btn.spin{animation:wifi-spin .8s linear infinite}
+@keyframes wifi-spin{to{transform:rotate(360deg)}}
+.wifi-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}
+.wifi-row{border-radius:8px;background:#1a2430;overflow:hidden;border:1px solid transparent}
+.wifi-row.known{border-color:#3a7a55}
+.wifi-row.connected{border-color:#6d6}
+.wifi-row.open{border-color:#3a5675;background:#1c2836}
+.wifi-row.softap{border-color:#3a6a8a;background:#15202c}
+.wifi-row.softap .wifi-item .name-tag{
+  display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;
+  padding:1px 6px;border-radius:4px;background:#2a4a62;color:#cde;margin-right:6px;vertical-align:middle
+}
+.wifi-row.join-disabled{opacity:.45;filter:grayscale(.35)}
+.wifi-row.join-disabled.open{opacity:.85;filter:grayscale(.15)}
+.wifi-row.join-disabled .wifi-item{cursor:pointer}
+.wifi-row.join-disabled .icon-btn:disabled{opacity:.7}
+.wifi-item{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:0;border-radius:0;background:transparent;color:#e7ecf1;font-size:12px;text-align:left;cursor:pointer;width:100%}
+.wifi-item:active{background:#2a3a4d}
+.wifi-item .meta{color:#8aa;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.wifi-row-body{display:none;padding:0 10px 10px;flex-direction:column;gap:8px}
+.wifi-row.open .wifi-row-body{display:flex}
+.wifi-row-body .hint{text-align:left}
+.wifi-check{display:flex;align-items:center;gap:8px;font-size:12px;color:#c5d0da;cursor:pointer;user-select:none}
+.wifi-check input{width:18px;height:18px;accent-color:#3a7a55}
+.profile-row.flash{outline:1px solid #6d6;outline-offset:2px}
+.sig-bars{display:inline-flex;align-items:flex-end;gap:2px;height:12px;vertical-align:middle}
+.sig-bars i{display:block;width:3px;background:#314556;border-radius:1px}
+.sig-bars i:nth-child(1){height:4px}
+.sig-bars i:nth-child(2){height:7px}
+.sig-bars i:nth-child(3){height:10px}
+.sig-bars i:nth-child(4){height:12px}
+.sig-bars i.on{background:#6d6}
+.sig-bars.fair i.on{background:#db8}
+.sig-bars.weak i.on{background:#d86}
+.wifi-lock,.wifi-tag{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:14px;height:14px;color:#8aa;flex-shrink:0;vertical-align:middle
+}
+.wifi-lock.open{color:#9ab}
+.wifi-tag.saved{color:#6d6}
+.wifi-tag.auto{color:#7ab}
+.wifi-lock svg,.wifi-tag svg{display:block;width:14px;height:14px}
+.sig-line{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;color:#c5d0da}
+.profile-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px;border:1px solid #2b3a4a;border-radius:8px;background:#121820}
+.profile-row .name{flex:1;min-width:120px;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.profile-row .meta{flex:1 1 100%;font-size:11px;color:#8aa;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.profile-row .pass-edit{flex:1 1 100%}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
+.modal-backdrop.open{display:flex}
+.modal-card{width:min(440px,100%);max-height:min(80vh,640px);overflow:auto;background:#0f1419;border:1px solid #2b3a4a;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.modal-head h2{margin:0;font-size:15px}
+#wifi-profiles-list{display:flex;flex-direction:column;gap:8px}
+#wifi-softap-modal .modal-card{overflow:hidden}
+.softap-modal-fields{display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
+.pass-wrap{display:flex;gap:6px;align-items:stretch}
+.pass-wrap input{flex:1;min-width:0}
+.pass-toggle{flex-shrink:0;padding:10px 12px;border:0;border-radius:8px;background:#314556;color:#e7ecf1;font-size:12px;white-space:nowrap}
+.field select{
+  width:100%;max-width:100%;padding:10px;border-radius:8px;border:1px solid #2b3a4a;background:#101820;color:#e7ecf1;font-size:14px
+}
+#cfg-msg{font-size:12px;min-height:1.2em;margin:0}
+#cfg-msg.ok{color:#6d6}
+#cfg-msg.err{color:#d86}
+#cfg-msg.warn{color:#db8}

@@ -1,6 +1,7 @@
 #include "tools/tf_card/TfCardTool.h"
 
 #include "display/Display.h"
+#include "storage/ConfigStore.h"
 #include "storage/TfExpose.h"
 
 namespace tools {
@@ -392,7 +393,10 @@ void TfCardTool::drawFormatResult() {
     snprintf(line, sizeof(line), "%s %uMB", info_.type_name, info_.size_mb);
     tft.drawString(line, tft.width() / 2, 36);
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
-    tft.drawString("name: POCKETOPS", tft.width() / 2, 48);
+    char name_line[40];
+    snprintf(name_line, sizeof(name_line), "name: %s",
+             storage::ConfigStore::instance().volumeLabel());
+    tft.drawString(name_line, tft.width() / 2, 48);
   }
 
   tft.setTextColor(TFT_DARKGREY, TFT_BLACK);

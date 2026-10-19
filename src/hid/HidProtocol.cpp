@@ -98,7 +98,8 @@ void HidProtocol::processMessage(const char* json) {
   if (t == 'm') {
     const int dx = constrain(jsonInt(json, "dx"), -127, 127);
     const int dy = constrain(jsonInt(json, "dy"), -127, 127);
-    h.mouseMove(static_cast<int8_t>(dx), static_cast<int8_t>(dy));
+    const int wheel = constrain(jsonInt(json, "w"), -127, 127);
+    h.mouseMove(static_cast<int8_t>(dx), static_cast<int8_t>(dy), static_cast<int8_t>(wheel));
   } else if (t == 'b') {
     const uint8_t btn = mapMouseButton(jsonInt(json, "b"));
     if (jsonInt(json, "s")) {

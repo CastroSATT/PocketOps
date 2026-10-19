@@ -7,6 +7,7 @@
 #include "USB.h"
 #include "USBHIDKeyboard.h"
 #include "USBHIDMouse.h"
+#include "storage/ConfigStore.h"
 
 namespace {
 
@@ -43,10 +44,16 @@ void UsbHid::begin() {
 bool UsbHid::ready() const { return started_; }
 
 void UsbHid::typeText(const char* text) {
-  if (!text) {
+  if (!text || !text[0]) {
     return;
   }
-  g_keyboard.print(text);
+  const uint16_t gap = storage::ConfigStore::instance().keyCharIntervalMs();
+  for (const char* p = text; *p; ++p) {
+    g_keyboard.write(*p);
+    if (gap > 0 && p[1]) {
+      delay(gap);
+    }
+  }
 }
 
 void UsbHid::keyDown(uint8_t keycode) { g_keyboard.press(keycode); }

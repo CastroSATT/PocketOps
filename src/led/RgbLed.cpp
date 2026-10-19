@@ -72,7 +72,34 @@ void RgbLed::off() {
 
 void RgbLed::setRgb(uint8_t r, uint8_t g, uint8_t b) {
   pulse_on_ = false;
-  show(r, g, b, 16);
+  show(r, g, b, hwBrightness());
+}
+
+void RgbLed::setBrightnessPercent(uint8_t percent) {
+  if (percent < 5) {
+    percent = 5;
+  }
+  if (percent > 100) {
+    percent = 100;
+  }
+  brightness_pct_ = percent;
+  last_br_ = 255;  // force next show()
+  if (pulse_on_) {
+    update();
+  }
+}
+
+uint8_t RgbLed::hwBrightness() const {
+  // Map 5–100% → 2–31 (APA102 global brightness nibble).
+  const uint16_t v = static_cast<uint16_t>(brightness_pct_);
+  uint8_t hw = static_cast<uint8_t>((v * 31 + 50) / 100);
+  if (hw < 2) {
+    hw = 2;
+  }
+  if (hw > 31) {
+    hw = 31;
+  }
+  return hw;
 }
 
 void RgbLed::setPulseColor(uint8_t r, uint8_t g, uint8_t b) {
@@ -103,7 +130,7 @@ void RgbLed::update() {
   const float wave = 0.5f + 0.5f * sinf(t * 6.2831853f);
   const float level = 0.12f + 0.88f * wave;
   show(static_cast<uint8_t>(pr_ * level), static_cast<uint8_t>(pg_ * level),
-       static_cast<uint8_t>(pb_ * level), 18);
+       static_cast<uint8_t>(pb_ * level), hwBrightness());
 }
 
 }  // namespace led

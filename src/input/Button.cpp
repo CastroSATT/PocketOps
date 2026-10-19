@@ -1,12 +1,16 @@
 #include "input/Button.h"
 
-#include "config.h"
+#include "board_pins.h"
+#include "storage/ConfigStore.h"
 
 namespace input {
 
 Button::Button(int pin) : pin_(pin) {}
 
 void Button::begin() {
+  if (pin_ < 0) {
+    pin_ = pins::BOOT_BTN;
+  }
   pinMode(pin_, INPUT_PULLUP);
   stable_down_ = digitalRead(pin_) == LOW;
   raw_down_ = stable_down_;
@@ -41,7 +45,9 @@ void Button::update() {
     last_change_ms_ = now;
   }
 
-  if ((now - last_change_ms_) < config::BTN_DEBOUNCE_MS) {
+  auto& cfg = storage::ConfigStore::instance();
+
+  if ((now - last_change_ms_) < cfg.btnDebounceMs()) {
     // still bouncing
   } else if (down != stable_down_) {
     stable_down_ = down;
@@ -57,15 +63,13 @@ void Button::update() {
     }
   }
 
-  if (stable_down_ && !long_fired_ &&
-      (now - down_at_ms_) >= config::BTN_LONG_MS) {
+  if (stable_down_ && !long_fired_ && (now - down_at_ms_) >= cfg.btnLongMs()) {
     long_fired_ = true;
     tap_count_ = 0;
     emit(Event::Long);
   }
 
-  if (!stable_down_ && tap_count_ > 0 &&
-      (now - last_tap_ms_) >= config::BTN_MULTI_GAP_MS) {
+  if (!stable_down_ && tap_count_ > 0 && (now - last_tap_ms_) >= cfg.btnMultiGapMs()) {
     finishTapSequence();
   }
 }

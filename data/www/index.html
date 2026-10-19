@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>__PO_REMOTE_TITLE__</title>
+<link rel="stylesheet" href="/css/app.css"/>
+<script>window.__PO__=window.__PO__||{};window.__PO__.wsPort=__PO_WS_PORT__;</script>
+</head>
+<body>
+<header>
+  <h1>__PO_REMOTE_TITLE__</h1>
+  <div class="hdr-right">
+    <span id="wifi-mode-badge" title="Wi-Fi mode">AP</span>
+    <span id="sd-badge" title="USB Expose">SD</span>
+    <span id="status">connecting…</span>
+  </div>
+</header>
+
+<nav class="tabs" id="main-tabs">
+  <button type="button" data-tab="remote" class="active">Remote</button>
+  <button type="button" data-tab="config">Config</button>
+</nav>
+
+<section id="panel-remote" class="panel active">
+  <main>
+    <div id="pad"></div>
+    <div class="row">
+      <button type="button" id="lbtn">Left</button>
+      <button type="button" id="mbtn">Middle</button>
+      <button type="button" id="rbtn">Right</button>
+    </div>
+    <div id="keys">
+      <button type="button" data-k="27">Esc</button>
+      <button type="button" data-k="32">Space</button>
+      <button type="button" data-k="8">Backspace</button>
+      <button type="button" data-k="9">Tab</button>
+      <button type="button" data-k="38">↑</button>
+      <button type="button" data-k="13">Enter</button>
+      <button type="button" data-k="37">←</button>
+      <button type="button" data-k="40">↓</button>
+      <button type="button" data-k="39">→</button>
+    </div>
+    <input id="text" placeholder="Tap here · type live…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+    <p class="hint">Tap = click · drag = move · two-finger drag = scroll (if enabled) · tune under Config → Mouse</p>
+  </main>
+</section>
+
+<section id="panel-config" class="panel">
+  <nav class="subtabs" id="cfg-subtabs">
+    <button type="button" data-cfg="network" class="active">Network</button>
+    <button type="button" data-cfg="bluetooth">Bluetooth</button>
+    <button type="button" data-cfg="mouse">Mouse</button>
+    <button type="button" data-cfg="keyboard">Keyboard</button>
+    <button type="button" data-cfg="sd">SD</button>
+    <button type="button" data-cfg="ui">UI</button>
+    <button type="button" data-cfg="display">Display</button>
+    <button type="button" data-cfg="backup">Backup</button>
+  </nav>
+  <p id="cfg-meta"></p>
+
+  <div id="view-fields" class="cfg-view active">
+    <div class="cfg-scroll" id="cfg-fields"></div>
+  </div>
+
+  <div id="view-sd" class="cfg-view">
+    <div class="cfg-scroll">
+      <div class="sd-status">
+        <div class="sd-row">
+          <span>USB Expose</span>
+          <label class="switch" title="Show card to the computer as a USB drive">
+            <input type="checkbox" id="sd-expose"/>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p id="sd-info">Loading card…</p>
+        <button type="button" class="icon-btn" id="sd-refresh">Refresh card</button>
+      </div>
+      <p class="section-title">Names &amp; labels</p>
+      <div id="dir-meta-fields"></div>
+      <p class="section-title">Folders after Format</p>
+      <p class="hint" style="text-align:left">/Logs is fixed — used for device logs when a card is present.</p>
+      <div id="dir-folder-list"></div>
+      <button type="button" class="icon-btn" id="dir-add">+ Add folder</button>
+      <div class="format-box">
+        <p class="section-title">Format microSD</p>
+        <p>Wipes the card to FAT32, applies saved names, and creates the folder list. Save settings first if you edited them.</p>
+        <div class="fmt-progress" id="fmt-progress" hidden>
+          <div class="fmt-pct-row">
+            <span id="fmt-pct">0%</span>
+            <span id="fmt-status">starting</span>
+          </div>
+          <div class="fmt-bar" aria-hidden="true"><div class="fmt-bar-fill" id="fmt-bar-fill"></div></div>
+        </div>
+        <button type="button" class="icon-btn danger" id="dir-format">Format card</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-backup" class="cfg-view">
+    <div class="cfg-scroll">
+      <div class="backup-box">
+        <p class="section-title">Download</p>
+        <p class="hint" style="text-align:left">Saves a dated <code>.pobak</code> of all on-chip settings: network, Bluetooth, mouse, keyboard, SD folders, UI, display, and Wi‑Fi profiles (passwords included).</p>
+        <button type="button" class="icon-btn" id="backup-download">Download backup</button>
+      </div>
+      <div class="backup-box">
+        <p class="section-title">Restore</p>
+        <p class="hint" style="text-align:left">Upload a <code>.pobak</code> from Download above. Replaces matching .ini files on the device.</p>
+        <input type="file" id="backup-file" accept=".pobak,application/octet-stream" hidden/>
+        <button type="button" class="icon-btn" id="backup-upload">Upload backup</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cfg-actions">
+    <button type="button" id="cfg-reload">Reload</button>
+    <button type="button" id="cfg-save">Save</button>
+  </div>
+  <p id="cfg-msg"></p>
+</section>
+
+<div class="modal-backdrop" id="wifi-profiles-modal" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-labelledby="wifi-profiles-title">
+    <div class="modal-head">
+      <h2 id="wifi-profiles-title">Saved Wi-Fi profiles</h2>
+      <button type="button" class="icon-btn" id="wifi-profiles-close">Close</button>
+    </div>
+    <p class="hint">Review, edit password / MAC, connect, or delete. Auto-join uses these when in range.</p>
+    <div id="wifi-profiles-list"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="wifi-softap-modal" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-labelledby="wifi-softap-title">
+    <div class="modal-head">
+      <h2 id="wifi-softap-title">SoftAP hotspot</h2>
+      <button type="button" class="icon-btn" id="wifi-softap-close">Close</button>
+    </div>
+    <p class="hint">Always available. Edit name, password, channel, and ports, then Save. Scroll if needed.</p>
+    <div id="wifi-softap-fields" class="softap-modal-fields"></div>
+    <div class="cfg-actions">
+      <button type="button" class="icon-btn" id="wifi-softap-save">Save hotspot settings</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

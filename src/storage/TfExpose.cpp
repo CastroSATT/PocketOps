@@ -5,11 +5,13 @@
 #include <string.h>
 
 #include "USBMSC.h"
-#include "board_pins.h"
 #include "display/Display.h"
 #include "driver/sdmmc_host.h"
 #include "hid/UsbHid.h"
 #include "sdmmc_cmd.h"
+#include "Branding.h"
+#include "board_pins.h"
+#include "storage/ConfigStore.h"
 #include "tusb.h"
 
 extern "C" {
@@ -26,10 +28,71 @@ namespace {
 
 USBMSC g_msc;
 
-const char* kDirs[] = {"/Mac", "/PC", "/Linux", "/Logs", "/Audio"};
-constexpr const char* kVolumeLabel = "PocketOps";  // host drive name
 constexpr BYTE kCtrlSync = 0;  // CTRL_SYNC
 constexpr BYTE kAttrVolumeId = 0x08;
+constexpr size_t kPathBuf = 96;
+
+const char* configuredVolumeLabel() {
+  return storage::ConfigStore::instance().volumeLabel();
+}
+
+// Create one directory entry (file-in-the-way → remove, then mkdir).
+bool ensureDirEntry(const char* path) {
+  if (SD_MMC.exists(path)) {
+    File f = SD_MMC.open(path);
+    const bool is_dir = f && f.isDirectory();
+    if (f) {
+      f.close();
+    }
+    if (is_dir) {
+      return true;
+    }
+    SD_MMC.remove(path);
+  }
+  if (!SD_MMC.mkdir(path)) {
+    Serial.printf("TF: mkdir %s failed\n", path);
+    return false;
+  }
+  return true;
+}
+
+// Create full tree: "/Audio/Audio Tests" → "/Audio" then "/Audio/Audio Tests".
+bool ensureDirTree(const char* path) {
+  if (!path || path[0] != '/') {
+    Serial.printf("TF: bad folder path '%s'\n", path ? path : "(null)");
+    return false;
+  }
+
+  char buf[kPathBuf];
+  size_t n = 0;
+  buf[n++] = '/';
+
+  for (const char* p = path + 1;; ++p) {
+    if (*p == '/' || *p == '\0') {
+      if (n > 1) {
+        buf[n] = '\0';
+        if (!ensureDirEntry(buf)) {
+          return false;
+        }
+      }
+      if (*p == '\0') {
+        break;
+      }
+      if (n + 1 >= sizeof(buf)) {
+        Serial.printf("TF: path too long: %s\n", path);
+        return false;
+      }
+      buf[n++] = '/';
+    } else {
+      if (n + 1 >= sizeof(buf)) {
+        Serial.printf("TF: path too long: %s\n", path);
+        return false;
+      }
+      buf[n++] = *p;
+    }
+  }
+  return true;
+}
 
 void makeFatLabel(const char* label, char out[11]) {
   memset(out, ' ', 11);
@@ -154,7 +217,7 @@ bool writeVolumeLabel(const char* label) {
 }
 
 bool setSdPins(bool mode1bit) {
-  // Exact LilyGO T-Dongle-S3 pin order: clk, cmd, d0[, d1, d2, d3]
+  // Pin order: clk, cmd, d0[, d1, d2, d3] — from config/board.ini (compile-time)
   bool ok = false;
   if (mode1bit) {
     ok = SD_MMC.setPins(pins::SD_CLK, pins::SD_CMD, pins::SD_D0);
@@ -293,7 +356,7 @@ bool rawApplyVolumeLabel() {
   if (!card) {
     return false;
   }
-  const bool ok = writeVolumeLabel(kVolumeLabel);
+  const bool ok = writeVolumeLabel(configuredVolumeLabel());
   rawDiskClose(card);
   return ok;
 }
@@ -331,7 +394,7 @@ bool rawFormatFat32(void (*pct)(int, const char*)) {
     }
     if (res == FR_OK) {
       tick(75, "TF: label");
-      labeled = writeVolumeLabel(kVolumeLabel);
+      labeled = writeVolumeLabel(configuredVolumeLabel());
     }
     free(work);
   }
@@ -361,7 +424,8 @@ bool TfExpose::activityRecent(uint32_t window_ms) const {
 
 void TfExpose::persist(bool on) {
   Preferences prefs;
-  if (!prefs.begin("pocketops", false)) {
+  ConfigStore::instance().loadFormatFolders();
+  if (!prefs.begin(ConfigStore::instance().nvsNamespace(), false)) {
     return;
   }
   prefs.putBool("tf_on", on);
@@ -374,7 +438,8 @@ void TfExpose::loadSaved() {
 
   Preferences prefs;
   bool want = false;
-  if (prefs.begin("pocketops", true)) {
+  ConfigStore::instance().loadFormatFolders();
+  if (prefs.begin(ConfigStore::instance().nvsNamespace(), true)) {
     want = prefs.getBool("tf_on", false);
     prefs.end();
   }
@@ -431,8 +496,12 @@ void TfExpose::fillInfo(TfCardInfo& out) {
   out.used_mb = static_cast<uint32_t>(SD_MMC.usedBytes() / (1024ULL * 1024ULL));
   out.free_mb = (out.total_mb > out.used_mb) ? (out.total_mb - out.used_mb) : 0;
 
+  auto& cfg = ConfigStore::instance();
+  cfg.loadFormatFolders();
+
   out.dirs_ok = true;
-  for (const char* dir : kDirs) {
+  for (size_t i = 0; i < cfg.formatFolderCount(); ++i) {
+    const char* dir = cfg.formatFolder(i);
     File f = SD_MMC.open(dir);
     const bool ok = f && f.isDirectory();
     if (f) {
@@ -446,20 +515,10 @@ void TfExpose::fillInfo(TfCardInfo& out) {
 }
 
 bool TfExpose::ensureDirs() {
-  for (const char* dir : kDirs) {
-    if (SD_MMC.exists(dir)) {
-      File f = SD_MMC.open(dir);
-      const bool is_dir = f && f.isDirectory();
-      if (f) {
-        f.close();
-      }
-      if (is_dir) {
-        continue;
-      }
-      SD_MMC.remove(dir);
-    }
-    if (!SD_MMC.mkdir(dir)) {
-      Serial.printf("TF: mkdir %s failed\n", dir);
+  auto& cfg = ConfigStore::instance();
+  cfg.loadFormatFolders();
+  for (size_t i = 0; i < cfg.formatFolderCount(); ++i) {
+    if (!ensureDirTree(cfg.formatFolder(i))) {
       return false;
     }
   }
@@ -545,6 +604,7 @@ bool TfExpose::formatPocketLayout(TfCardInfo& out, FormatProgress progress) {
   mounted_ = true;
 
   tick(88, "TF: folders");
+  ConfigStore::instance().loadFormatFolders();
   if (!ensureDirs()) {
     last_error_ = "mkdir fail";
     fillInfo(out);
@@ -568,7 +628,7 @@ bool TfExpose::formatPocketLayout(TfCardInfo& out, FormatProgress progress) {
   probed_ = true;
   last_error_ = "";
   tick(100, "TF: format OK");
-  Serial.printf("TF: format OK size=%uMB label=%s\n", out.size_mb, kVolumeLabel);
+  Serial.printf("TF: format OK size=%uMB label=%s\n", out.size_mb, configuredVolumeLabel());
   return true;
 }
 
@@ -610,9 +670,12 @@ bool TfExpose::startMsc() {
     return false;
   }
 
-  g_msc.vendorID("PocketOps");
-  g_msc.productID("PocketOps");  // USB name; FAT volume label set on Format
-  g_msc.productRevision("1.0");
+  auto& cfg = ConfigStore::instance();
+  cfg.loadFormatFolders();
+  // Vendor + revision are fixed; product follows the FAT drive name (volume label).
+  g_msc.vendorID(branding::kName);
+  g_msc.productID(cfg.volumeLabel());
+  g_msc.productRevision(branding::kFirmwareVersion);
   g_msc.onRead(onRead);
   g_msc.onWrite(onWrite);
   g_msc.onStartStop(onStartStop);

@@ -17,5 +17,10 @@ sdcard-layout/**/*
 !sdcard-layout/**/
 !sdcard-layout/**/.gitkeep
 !sdcard-layout/**/README.txt
+# Local-only audio test pack (WAVs + its README — not in the repo)
+sdcard-layout/Audio/Audio Tests/
 
 .venv/
+
+# Generated at build (board pins + www page seed)
+include/generated/

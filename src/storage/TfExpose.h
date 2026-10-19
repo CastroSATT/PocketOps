@@ -38,8 +38,9 @@ class TfExpose {
   // Mount, fill size/type/dir info. Leaves mount as it found it (except errors).
   bool checkCard(TfCardInfo& out);
 
-  // FAT format, label volume "PocketOps", create /Mac /PC /Linux /Logs /Audio.
-  // Turns expose off during the wipe. Optional progress(0–100, status) for UI.
+  // FAT format using LittleFS pocketops_folders.ini (volume label, USB names,
+  // nested folders). Turns expose off during the wipe. Optional progress
+  // (0–100, status) for UI.
   using FormatProgress = void (*)(int percent, const char* status);
   bool formatPocketLayout(TfCardInfo& out, FormatProgress progress = nullptr);
 
