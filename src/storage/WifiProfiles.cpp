@@ -5,6 +5,8 @@
 #include <string.h>
 
 #include "storage/ConfigStore.h"
+#include "storage/UsbConsole.h"
+#include "util/TextUtil.h"
 
 namespace storage {
 namespace {
@@ -15,34 +17,8 @@ constexpr const char* kSeed =
     "; One network = ssid= / pass= / bssid= / auto_join=0|1. Blank line between OK.\n"
     "; SoftAP stays available if none of these are in range.\n";
 
-void copyKey(char* dst, size_t dst_len, const char* src) {
-  if (!dst || dst_len == 0) {
-    return;
-  }
-  if (!src) {
-    dst[0] = '\0';
-    return;
-  }
-  strncpy(dst, src, dst_len - 1);
-  dst[dst_len - 1] = '\0';
-}
-
-void trimInPlace(char* s) {
-  if (!s) {
-    return;
-  }
-  char* start = s;
-  while (*start == ' ' || *start == '\t' || *start == '\r') {
-    ++start;
-  }
-  if (start != s) {
-    memmove(s, start, strlen(start) + 1);
-  }
-  size_t n = strlen(s);
-  while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r')) {
-    s[--n] = '\0';
-  }
-}
+using util::copyKey;
+using util::trimInPlace;
 
 bool parseBool01(const char* value, bool default_val) {
   if (!value || !value[0]) {
@@ -105,7 +81,7 @@ bool WifiProfiles::ensureFile() {
   }
   f.print(kSeed);
   f.close();
-  Serial.printf("WIFI: seeded %s\n", kPath);
+  PoSer().printf("WIFI: seeded %s\n", kPath);
   return true;
 }
 
@@ -200,7 +176,7 @@ bool WifiProfiles::load() {
     commit();
   }
   f.close();
-  Serial.printf("WIFI: profiles loaded (%u)\n", static_cast<unsigned>(count_));
+  PoSer().printf("WIFI: profiles loaded (%u)\n", static_cast<unsigned>(count_));
   return true;
 }
 
@@ -224,6 +200,16 @@ bool WifiProfiles::save() {
   }
   f.close();
   return true;
+}
+
+bool WifiProfiles::clearAll() {
+  clear();
+  if (LittleFS.exists(kPath)) {
+    LittleFS.remove(kPath);
+  }
+  const bool ok = save();
+  PoSer().printf("WIFI: profiles cleared (%s)\n", ok ? "ok" : "fail");
+  return ok;
 }
 
 const char* WifiProfiles::ssid(size_t index) const {
@@ -290,7 +276,7 @@ bool WifiProfiles::upsert(const char* ssid, const char* pass, const char* bssid,
     return save();
   }
   if (count_ >= kMaxProfiles) {
-    Serial.println("WIFI: profile list full");
+    PoSer().println("WIFI: profile list full");
     return false;
   }
   copyKey(ssids_[count_], kSsidLen, ssid);

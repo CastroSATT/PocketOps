@@ -11,14 +11,28 @@
 <header>
   <h1>__PO_REMOTE_TITLE__</h1>
   <div class="hdr-right">
+    <span id="sta-link" class="sta-link" hidden title="Joined Wi‑Fi">
+      <span id="sta-bars" class="sta-bars" aria-hidden="true"></span>
+      <span id="sta-ssid" class="sta-ssid"></span>
+    </span>
     <span id="wifi-mode-badge" title="Wi-Fi mode">AP</span>
-    <span id="sd-badge" title="USB Expose">SD</span>
+    <span class="hdr-meters" id="hdr-meters" title="Storage">
+      <span class="hdr-meter lfs" id="hdr-lfs" title="Internal (chip)">
+        <i class="hdr-meter-fill" id="hdr-lfs-fill"></i>
+      </span>
+      <span class="hdr-meter sd off" id="hdr-sd" title="microSD">
+        <i class="hdr-meter-fill" id="hdr-sd-fill"></i>
+      </span>
+    </span>
+    <span id="sd-badge" title="SD card" role="button" tabindex="0">SD</span>
     <span id="status">connecting…</span>
   </div>
 </header>
 
 <nav class="tabs" id="main-tabs">
   <button type="button" data-tab="remote" class="active">Remote</button>
+  <button type="button" data-tab="lan" id="tab-lan" hidden>LAN</button>
+  <button type="button" data-tab="files" id="tab-files" hidden>Files</button>
   <button type="button" data-tab="config">Config</button>
 </nav>
 
@@ -42,9 +56,142 @@
       <button type="button" data-k="39">→</button>
     </div>
     <input id="text" placeholder="Tap here · type live…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
-    <p class="hint">Tap = click · drag = move · two-finger drag = scroll (if enabled) · tune under Config → Mouse</p>
+    <p class="hint">Mouse: move/click only over the pad (leave = stop). Touch: tap = click · drag = move · two-finger = scroll. Tune under Config → Mouse</p>
   </main>
 </section>
+
+<section id="panel-lan" class="panel">
+  <main class="lan-main">
+    <p class="section-title">Joined network</p>
+    <div class="lan-card" id="lan-card">
+      <div class="lan-row"><span>Network</span><strong id="lan-ssid">—</strong></div>
+      <div class="lan-row"><span>Signal</span><span id="lan-signal">—</span></div>
+      <div class="lan-row"><span>IP address</span><strong id="lan-ip">—</strong></div>
+      <div class="lan-row"><span>Mask</span><span id="lan-mask">—</span></div>
+      <div class="lan-row"><span>Gateway</span><span id="lan-gw">—</span></div>
+      <div class="lan-row"><span>DNS</span><span id="lan-dns">—</span></div>
+      <div class="lan-row"><span>AP MAC</span><span id="lan-bssid">—</span></div>
+      <div class="lan-row"><span>Hostname</span><span id="lan-hostname">—</span></div>
+      <div class="lan-row"><span>Status</span><span id="lan-status">—</span></div>
+    </div>
+
+    <div class="lan-card" id="lan-profile-bar">
+      <div class="lan-row"><span>Profile</span><span id="lan-profile-status">—</span></div>
+      <div class="lan-actions">
+        <button type="button" class="icon-btn" id="lan-profile-save">Save</button>
+        <button type="button" class="icon-btn danger" id="lan-profile-clear">Clear</button>
+      </div>
+      <p class="hint" style="text-align:left" id="lan-profile-hint">Profiles auto-load for this Wi‑Fi (AP MAC). Max 100 on device.</p>
+    </div>
+
+    <p class="section-title">IP scanner</p>
+    <div class="lan-card">
+      <div class="lan-range">
+        <label>From <input id="lan-from" autocomplete="off"/></label>
+        <label>To <input id="lan-to" autocomplete="off"/></label>
+      </div>
+      <div class="lan-actions">
+        <button type="button" class="icon-btn" id="lan-scan">Scan</button>
+        <button type="button" class="icon-btn" id="lan-cancel">Cancel</button>
+        <button type="button" class="icon-btn" id="lan-copy-all">Copy all</button>
+        <button type="button" class="icon-btn" id="lan-export">Export</button>
+      </div>
+      <div class="lan-watch-row">
+        <label class="lan-check"><input type="checkbox" id="lan-watch"/> Watch</label>
+        <label>every <input type="number" id="lan-watch-min" min="1" max="60" value="5" style="width:3.5em"/> min</label>
+      </div>
+      <p class="lan-busy" id="lan-busy" hidden>Scanning…</p>
+      <div class="fmt-bar" id="lan-progress-wrap" hidden><div class="fmt-bar-fill" id="lan-progress"></div></div>
+    </div>
+
+    <div class="lan-card">
+      <input id="lan-host-filter" placeholder="Filter hosts…" autocomplete="off"/>
+      <div class="lan-host-table" id="lan-host-table"></div>
+    </div>
+
+    <p class="section-title">Tools</p>
+    <div class="lan-card">
+      <label>Target IP <input id="lan-tool-ip" autocomplete="off" placeholder="192.168.1.1"/></label>
+      <div class="lan-actions">
+        <button type="button" class="icon-btn" id="lan-ping">Ping</button>
+        <button type="button" class="icon-btn" id="lan-ports-quick">Ports Quick</button>
+        <button type="button" class="icon-btn" id="lan-ports-common">Ports Common</button>
+        <button type="button" class="icon-btn" id="lan-ports-full">Ports Full</button>
+        <button type="button" class="icon-btn" id="lan-traceroute">Traceroute</button>
+        <button type="button" class="icon-btn" id="lan-wol">Wake (WOL)</button>
+        <button type="button" class="icon-btn" id="lan-mdns">mDNS</button>
+      </div>
+      <label>Custom ports <input id="lan-ports-custom" placeholder="80,443 or 1-1024" autocomplete="off"/></label>
+      <button type="button" class="icon-btn" id="lan-ports-custom-btn">Scan custom ports</button>
+      <label>DNS lookup <input id="lan-dns-q" placeholder="name or IP" autocomplete="off"/></label>
+      <div class="lan-actions">
+        <button type="button" class="icon-btn" id="lan-dns-fwd">Resolve</button>
+        <button type="button" class="icon-btn" id="lan-dns-rev">Reverse</button>
+      </div>
+      <pre class="lan-tool-out" id="lan-tool-out"></pre>
+      <div class="lan-port-results" id="lan-port-results"></div>
+    </div>
+  </main>
+</section>
+
+<div class="ctx-menu" id="lan-ctx" hidden></div>
+<div class="modal-backdrop" id="lan-export-modal" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-labelledby="lan-export-title">
+    <div class="modal-head">
+      <h2 id="lan-export-title">Export scan</h2>
+      <button type="button" class="icon-btn" id="lan-export-close">Close</button>
+    </div>
+    <p class="hint">CSV of current hosts. Download to this device, or save on the microSD under /Logs/Lan/.</p>
+    <div class="lan-actions" style="flex-direction:column;align-items:stretch">
+      <button type="button" class="icon-btn" id="lan-export-dl">Download</button>
+      <button type="button" class="icon-btn" id="lan-export-sd">Save to SD</button>
+    </div>
+    <p class="hint" id="lan-export-msg" style="text-align:left"></p>
+  </div>
+</div>
+
+<section id="panel-files" class="panel">
+  <main class="files-main">
+    <p class="section-title">microSD browser</p>
+    <p class="hint" style="text-align:left">Shown when a microSD card is installed. If USB Expose is on, you’ll be asked to turn it off safely before browsing.</p>
+    <div class="lan-card">
+      <div class="files-path-row">
+        <button type="button" class="icon-btn" id="files-up" title="Up">↑</button>
+        <input id="files-path" value="/" readonly/>
+        <button type="button" class="icon-btn" id="files-refresh" title="Refresh">↻</button>
+      </div>
+      <div class="lan-actions">
+        <button type="button" class="icon-btn" id="files-mkdir">New folder</button>
+        <button type="button" class="icon-btn" id="files-upload-btn">Upload</button>
+        <input type="file" id="files-upload" hidden multiple/>
+      </div>
+      <div class="files-upload-progress" id="files-upload-progress" hidden>
+        <div class="fmt-pct-row">
+          <span id="files-upload-pct">0%</span>
+          <span id="files-upload-status">uploading</span>
+        </div>
+        <div class="fmt-bar" aria-hidden="true"><div class="fmt-bar-fill" id="files-upload-bar"></div></div>
+      </div>
+      <p class="hint" id="files-msg" style="text-align:left"></p>
+      <div class="files-list" id="files-list"></div>
+    </div>
+  </main>
+</section>
+
+<div class="modal-backdrop" id="files-expose-modal" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-labelledby="files-expose-title">
+    <div class="modal-head">
+      <h2 id="files-expose-title">USB Expose is on</h2>
+      <button type="button" class="icon-btn" id="files-expose-close">Close</button>
+    </div>
+    <p class="hint" style="text-align:left">The Mac is using this card as a USB drive. PocketOps can only browse it after Expose is turned off safely. If Finder still shows the disk afterward, eject it before opening files here — sharing the card crashes the dongle.</p>
+    <p class="hint" id="files-expose-status" style="text-align:left">Checking SD activity…</p>
+    <div class="lan-actions" style="flex-direction:column;align-items:stretch">
+      <button type="button" class="icon-btn" id="files-expose-off" disabled>Turn off Expose safely</button>
+      <button type="button" class="icon-btn" id="files-expose-retry">Check again</button>
+    </div>
+  </div>
+</div>
 
 <section id="panel-config" class="panel">
   <nav class="subtabs" id="cfg-subtabs">
@@ -55,6 +202,7 @@
     <button type="button" data-cfg="sd">SD</button>
     <button type="button" data-cfg="ui">UI</button>
     <button type="button" data-cfg="display">Display</button>
+    <button type="button" data-cfg="logs">Logs</button>
     <button type="button" data-cfg="backup">Backup</button>
   </nav>
   <p id="cfg-meta"></p>
@@ -68,10 +216,33 @@
       <div class="sd-status">
         <div class="sd-row">
           <span>USB Expose</span>
-          <label class="switch" title="Show card to the computer as a USB drive">
+          <label class="switch" title="Show card to the computer as a USB drive (now)">
             <input type="checkbox" id="sd-expose"/>
             <span class="slider"></span>
           </label>
+        </div>
+        <div class="sd-row">
+          <span>Start Expose on boot</span>
+          <label class="switch" title="When plugged in, turn USB Expose on automatically. Separate from the live switch.">
+            <input type="checkbox" id="sd-expose-boot"/>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="storage-meters">
+          <div class="storage-meter">
+            <div class="storage-meter-head">
+              <span>Internal (chip)</span>
+              <span id="lfs-meter-label">—</span>
+            </div>
+            <div class="fmt-bar" aria-hidden="true"><div class="fmt-bar-fill storage-fill lfs" id="lfs-meter-fill"></div></div>
+          </div>
+          <div class="storage-meter">
+            <div class="storage-meter-head">
+              <span>microSD</span>
+              <span id="sd-meter-label">—</span>
+            </div>
+            <div class="fmt-bar" aria-hidden="true"><div class="fmt-bar-fill storage-fill sd" id="sd-meter-fill"></div></div>
+          </div>
         </div>
         <p id="sd-info">Loading card…</p>
         <button type="button" class="icon-btn" id="sd-refresh">Refresh card</button>
@@ -79,7 +250,7 @@
       <p class="section-title">Names &amp; labels</p>
       <div id="dir-meta-fields"></div>
       <p class="section-title">Folders after Format</p>
-      <p class="hint" style="text-align:left">/Logs is fixed — used for device logs when a card is present.</p>
+      <p class="hint" style="text-align:left">/Logs is fixed. On-chip logs live in LittleFS; when the card is free, finished sessions may copy to <code>/Logs/Device/</code>.</p>
       <div id="dir-folder-list"></div>
       <button type="button" class="icon-btn" id="dir-add">+ Add folder</button>
       <div class="format-box">
@@ -97,18 +268,59 @@
     </div>
   </div>
 
+  <div id="view-logs" class="cfg-view">
+    <div class="cfg-scroll">
+      <div class="sd-row" style="margin-bottom:6px">
+        <span>Save logs on device</span>
+        <label class="switch" title="When off, no new log lines are written (old files stay)">
+          <input type="checkbox" id="logs-enable" checked/>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="sd-row" style="margin-bottom:8px">
+        <span>USB Serial console</span>
+        <label class="switch" title="Mute USB CDC Serial chatter when you do not need a cable monitor">
+          <input type="checkbox" id="logs-serial" checked/>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <p class="hint" style="text-align:left" id="logs-meta">On-chip session logs (max 10). Works without an SD card. When a card is free, finished sessions may also copy to <code>/Logs/Device/</code>.</p>
+      <div class="logs-toolbar">
+        <button type="button" class="icon-btn" id="logs-refresh">Refresh</button>
+        <button type="button" class="icon-btn danger" id="logs-delete">Delete</button>
+        <button type="button" class="icon-btn danger" id="logs-clear">Clear old</button>
+      </div>
+      <div id="logs-list" class="logs-list"></div>
+      <p class="section-title" id="logs-view-title">Log</p>
+      <pre id="logs-body" class="logs-body">Select a log file.</pre>
+    </div>
+  </div>
+
   <div id="view-backup" class="cfg-view">
     <div class="cfg-scroll">
       <div class="backup-box">
         <p class="section-title">Download</p>
-        <p class="hint" style="text-align:left">Saves a dated <code>.pobak</code> of all on-chip settings: network, Bluetooth, mouse, keyboard, SD folders, UI, display, and Wi‑Fi profiles (passwords included).</p>
+        <p class="hint" style="text-align:left">Saves a dated <code>.pobak</code> of all on-chip settings: network, Bluetooth, mouse, keyboard, SD folders, UI, display, Wi‑Fi profiles (passwords included), plus NVS prefs (Expose on boot, boot tool, USB serial, device log).</p>
         <button type="button" class="icon-btn" id="backup-download">Download backup</button>
       </div>
       <div class="backup-box">
         <p class="section-title">Restore</p>
-        <p class="hint" style="text-align:left">Upload a <code>.pobak</code> from Download above. Replaces matching .ini files on the device.</p>
+        <p class="hint" style="text-align:left">Upload a <code>.pobak</code> from Download above. Replaces matching .ini files and NVS prefs on the device.</p>
         <input type="file" id="backup-file" accept=".pobak,application/octet-stream" hidden/>
         <button type="button" class="icon-btn" id="backup-upload">Upload backup</button>
+      </div>
+      <div class="format-box" id="factory-reset-box">
+        <p class="section-title">Factory reset</p>
+        <p class="hint" style="text-align:left">Wipes selected on-chip data and reloads firmware defaults. Does not format the microSD card. SoftAP may return to <code>PocketOps</code> / <code>pocketops</code>.</p>
+        <label class="reset-opt"><input type="checkbox" id="fr-settings" checked/> Settings (.ini defaults: network, BT, mouse, keyboard, SD folders, UI, display)</label>
+        <label class="reset-opt"><input type="checkbox" id="fr-nvs" checked/> NVS prefs (Expose on boot, boot tool, USB serial, device log on/off)</label>
+        <label class="reset-opt"><input type="checkbox" id="fr-wifi" checked/> Wi‑Fi profiles (saved networks + passwords)</label>
+        <label class="reset-opt"><input type="checkbox" id="fr-lan" checked/> LAN scan profiles</label>
+        <label class="reset-opt"><input type="checkbox" id="fr-logs" checked/> Device logs (finished sessions; keeps live log)</label>
+        <label class="reset-confirm">Type <code>FACTORY RESET</code> to unlock
+          <input type="text" id="fr-confirm" autocomplete="off" spellcheck="false" placeholder="FACTORY RESET"/>
+        </label>
+        <button type="button" class="icon-btn danger" id="factory-reset" disabled>Factory reset</button>
       </div>
     </div>
   </div>

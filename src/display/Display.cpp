@@ -15,7 +15,10 @@ namespace {
 TFT_eSPI g_tft;
 
 bool g_icon_enabled = false;
+bool g_icon_present = false;
+bool g_icon_files_ui = false;
 bool g_icon_flash_phase = false;
+uint32_t g_sd_probe_ms = 0;
 bool g_softap_up = false;
 bool g_sta_up = false;
 uint8_t g_wifi_led_phase = 255;
@@ -98,24 +101,40 @@ void paintWifiModeBadge() {
   g_wifi_mode_tag[sizeof(g_wifi_mode_tag) - 1] = '\0';
 }
 
-void paintSdBadge(bool enabled, bool flash_on) {
+void paintSdBadge(bool present, bool enabled, bool files_ui, bool flash_on) {
   const int x = g_tft.width() - 22;
   const int y = 2;
   const int w = 18;
   const int h = 10;
 
-  if (!enabled) {
+  if (!present && !enabled && !files_ui) {
     g_tft.fillRect(x, y, w, h, TFT_NAVY);
     return;
   }
 
-  // Match web #sd-badge: on = yellow, activity flash = red.
-  const uint16_t bg =
-      flash_on ? g_tft.color565(239, 68, 68) : g_tft.color565(250, 204, 21);
+  // Match web #sd-badge:
+  // grey = card in / not exposed, orange = Files panel, yellow = Expose, red = activity flash.
+  uint16_t bg;
+  uint16_t fg = TFT_BLACK;
+  if (files_ui) {
+    if (flash_on) {
+      bg = g_tft.color565(239, 68, 68);
+      fg = TFT_WHITE;
+    } else {
+      bg = g_tft.color565(249, 115, 22);  // orange — Files open
+    }
+  } else if (enabled && flash_on) {
+    bg = g_tft.color565(239, 68, 68);
+    fg = TFT_WHITE;
+  } else if (enabled) {
+    bg = g_tft.color565(250, 204, 21);
+  } else {
+    bg = g_tft.color565(107, 114, 128);  // grey — inserted, Expose off
+  }
   g_tft.fillRoundRect(x, y, w, h, 2, bg);
   g_tft.setTextDatum(MC_DATUM);
   g_tft.setTextFont(1);
-  g_tft.setTextColor(flash_on ? TFT_WHITE : TFT_BLACK, bg);
+  g_tft.setTextColor(fg, bg);
   g_tft.drawString("SD", x + 9, y + 5);
 }
 
@@ -213,19 +232,37 @@ void splash() {
 
 void drawStatusIcons() {
   auto& tf = storage::TfExpose::instance();
+  if (!tf.enabled() && !tf.mounted() && millis() - g_sd_probe_ms > 4000u) {
+    g_sd_probe_ms = millis();
+    tf.refreshCardPresent();
+  }
   const bool enabled = tf.enabled();
-  const bool busy = enabled && tf.activityRecent();
+  const bool files_ui = tf.filesUiOpen() || tf.exclusiveHeld();
+  const bool present =
+      tf.cardPresent() || tf.mounted() || enabled || tf.exclusiveHeld() || files_ui;
+  const bool busy =
+      (files_ui && (tf.activityRecent() || tf.exclusiveHeld())) || (enabled && tf.activityRecent());
   const bool flash_on = busy && ((millis() / 90) & 1);
   g_icon_enabled = enabled;
+  g_icon_present = present;
+  g_icon_files_ui = files_ui;
   g_icon_flash_phase = flash_on;
   paintWifiModeBadge();
-  paintSdBadge(enabled, flash_on);
+  paintSdBadge(present, enabled, files_ui, flash_on);
 }
 
 void tickStatusIcons() {
   auto& tf = storage::TfExpose::instance();
+  if (!tf.enabled() && !tf.mounted() && millis() - g_sd_probe_ms > 4000u) {
+    g_sd_probe_ms = millis();
+    tf.refreshCardPresent();
+  }
   const bool enabled = tf.enabled();
-  const bool busy = enabled && tf.activityRecent();
+  const bool files_ui = tf.filesUiOpen() || tf.exclusiveHeld();
+  const bool present =
+      tf.cardPresent() || tf.mounted() || enabled || tf.exclusiveHeld() || files_ui;
+  const bool busy =
+      (files_ui && (tf.activityRecent() || tf.exclusiveHeld())) || (enabled && tf.activityRecent());
   const bool flash_on = busy && ((millis() / 90) & 1);
   const char* mode = storage::ConfigStore::instance().wifiMode();
   const bool ap_up = softApActive();
@@ -237,15 +274,18 @@ void tickStatusIcons() {
   const bool mode_changed = (strcmp(tag, g_wifi_mode_tag) != 0) || (ap_up != g_softap_up) ||
                             (sta_up != g_sta_up) || (led_phase != g_wifi_led_phase);
 
-  if (enabled == g_icon_enabled && flash_on == g_icon_flash_phase && !mode_changed) {
+  if (enabled == g_icon_enabled && present == g_icon_present && files_ui == g_icon_files_ui &&
+      flash_on == g_icon_flash_phase && !mode_changed) {
     return;
   }
   g_icon_enabled = enabled;
+  g_icon_present = present;
+  g_icon_files_ui = files_ui;
   g_icon_flash_phase = flash_on;
   if (mode_changed) {
     paintWifiModeBadge();
   }
-  paintSdBadge(enabled, flash_on);
+  paintSdBadge(present, enabled, files_ui, flash_on);
 }
 
 void statusBar(const char* title) {

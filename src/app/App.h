@@ -19,6 +19,7 @@ class App {
  private:
   void onButton(input::Event event);
   void enterSelectedTool();
+  void enterTool(tools::Tool* tool);
   void leaveTool();
   void syncMenuLed();
 

@@ -10,7 +10,7 @@ class WifiProfiles {
  public:
   static WifiProfiles& instance();
 
-  static constexpr size_t kMaxProfiles = 100;
+  static constexpr size_t kMaxProfiles = 40;
   static constexpr size_t kSsidLen = 33;
   static constexpr size_t kPassLen = 65;
   static constexpr size_t kBssidLen = 18;  // AA:BB:CC:DD:EE:FF
@@ -36,6 +36,9 @@ class WifiProfiles {
   bool setAutoJoin(const char* ssid, bool on);
   // Remove by SSID, then save.
   bool remove(const char* ssid);
+
+  // Wipe all saved networks and rewrite empty profiles file.
+  bool clearAll();
 
  private:
   WifiProfiles() = default;

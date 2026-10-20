@@ -9,6 +9,7 @@ import {
   paintWifiScan, lastWifiScan, lastConnectedSsid
 } from './wifi.js';
 import { renderSd, serializeSd, refreshSdStatus } from './sd.js';
+import { enterLogsPanel } from './logs.js';
 import { loadMouseCfg } from './remote.js';
 
 export const NET_GROUPS = [
@@ -75,9 +76,10 @@ export const CFG = {
   mouse:{mode:'fields',groups:MOUSE_GROUPS,header:'; PocketOps Mouse',label:'Mouse',note:'Pointer / scroll speed, two-finger scroll, and BT Serial WASD step. Use Remote to control the pointer.'},
   keyboard:{mode:'fields',groups:KEYBOARD_GROUPS,header:'; PocketOps Keyboard',label:'Keyboard',note:'How fast characters are typed when you use the Remote text box or paste.'},
   sd:{mode:'sd',label:'SD',note:'Drive name, folders after Format, Expose, and wipe.'},
-  ui:{mode:'fields',groups:UI_GROUPS,header:'; PocketOps UI',label:'UI',note:'Splash text and duration. Version / remote / BT / BOOT button timings are fixed in firmware.'},
+  ui:{mode:'fields',groups:UI_GROUPS,header:'; PocketOps UI',label:'UI',note:'Splash, tool on boot (applies next reboot), and duration. Version / remote / BT / BOOT button timings are fixed in firmware.'},
   display:{mode:'display',groups:DISPLAY_GROUPS,header:'; PocketOps Display / device light',label:'Display',note:'Sliders preview live. Save to keep. Cancel restores the last saved levels.'},
-  backup:{mode:'backup',label:'Backup',note:'Download or restore a .pobak of all on-chip .ini settings and Wi‑Fi profiles.'}
+  logs:{mode:'logs',label:'Logs',note:'Full on-chip session logs (max 10). No SD required.'},
+  backup:{mode:'backup',label:'Backup',note:'Download / restore .pobak, or factory-reset on-chip settings, profiles, and logs.'}
 };
 
 let deviceStatusTimer = null;
@@ -93,9 +95,9 @@ function setCfgActionLabels(id) {
   const reload = document.getElementById('cfg-reload');
   const save = document.getElementById('cfg-save');
   if (!reload) return;
-  if (id === 'network' || id === 'backup') {
+  if (id === 'network' || id === 'backup' || id === 'logs') {
     reload.style.display = 'none';
-    if (save && id === 'backup') save.style.display = 'none';
+    if (save && (id === 'backup' || id === 'logs')) save.style.display = 'none';
     return;
   }
   reload.style.display = '';
@@ -148,6 +150,66 @@ export async function uploadBackupZip(file) {
   }
 }
 
+const FACTORY_CONFIRM = 'FACTORY RESET';
+
+function factoryResetOptsFromUi() {
+  return {
+    settings: !!(document.getElementById('fr-settings') || {}).checked,
+    nvs: !!(document.getElementById('fr-nvs') || {}).checked,
+    wifi: !!(document.getElementById('fr-wifi') || {}).checked,
+    lan: !!(document.getElementById('fr-lan') || {}).checked,
+    logs: !!(document.getElementById('fr-logs') || {}).checked
+  };
+}
+
+function syncFactoryResetUnlock() {
+  const btn = document.getElementById('factory-reset');
+  const input = document.getElementById('fr-confirm');
+  if (!btn || !input) return;
+  const opts = factoryResetOptsFromUi();
+  const any = opts.settings || opts.nvs || opts.wifi || opts.lan || opts.logs;
+  btn.disabled = !(any && input.value.trim() === FACTORY_CONFIRM);
+}
+
+export async function runFactoryReset() {
+  const opts = factoryResetOptsFromUi();
+  if (!(opts.settings || opts.nvs || opts.wifi || opts.lan || opts.logs)) {
+    setMsg('Select at least one reset option', 'err');
+    return;
+  }
+  const typed = ((document.getElementById('fr-confirm') || {}).value || '').trim();
+  if (typed !== FACTORY_CONFIRM) {
+    setMsg('Type FACTORY RESET to unlock', 'err');
+    return;
+  }
+  if (!confirm('Factory reset the selected items on this device? This cannot be undone.')) return;
+  if (!confirm('Final confirm: wipe selected settings / profiles / logs?')) return;
+
+  setMsg('Factory reset…');
+  try {
+    const body = new URLSearchParams();
+    body.set('confirm', FACTORY_CONFIRM);
+    body.set('settings', opts.settings ? '1' : '0');
+    body.set('nvs', opts.nvs ? '1' : '0');
+    body.set('wifi', opts.wifi ? '1' : '0');
+    body.set('lan', opts.lan ? '1' : '0');
+    body.set('logs', opts.logs ? '1' : '0');
+    const r = await fetch('/api/config/factory-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    });
+    const t = await r.text();
+    if (!r.ok) throw new Error(t || ('HTTP ' + r.status));
+    const conf = document.getElementById('fr-confirm');
+    if (conf) conf.value = '';
+    syncFactoryResetUnlock();
+    setMsg(t || 'Factory reset complete', 'ok');
+  } catch (err) {
+    setMsg(String(err.message || err), 'err');
+  }
+}
+
 export function bindBackupPanel() {
   const dl = document.getElementById('backup-download');
   const up = document.getElementById('backup-upload');
@@ -165,6 +227,25 @@ export function bindBackupPanel() {
       uploadBackupZip(f);
     });
   }
+
+  const frBtn = document.getElementById('factory-reset');
+  const frConfirm = document.getElementById('fr-confirm');
+  if (frBtn && !frBtn.dataset.bound) {
+    frBtn.dataset.bound = '1';
+    frBtn.addEventListener('click', () => runFactoryReset());
+  }
+  if (frConfirm && !frConfirm.dataset.bound) {
+    frConfirm.dataset.bound = '1';
+    frConfirm.addEventListener('input', syncFactoryResetUnlock);
+  }
+  ['fr-settings', 'fr-nvs', 'fr-wifi', 'fr-lan', 'fr-logs'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && !el.dataset.bound) {
+      el.dataset.bound = '1';
+      el.addEventListener('change', syncFactoryResetUnlock);
+    }
+  });
+  syncFactoryResetUnlock();
 }
 
 export async function previewDisplayLive(vals) {
@@ -390,6 +471,63 @@ export function bodyForSave(id) {
   return serializeGroups(info.header, info.label, info.groups);
 }
 
+async function mountBootToolPicker() {
+  // Appended under Config → UI fields; saves immediately (not via Config Save).
+  const host = cfgFields;
+  if (!host) return;
+  let box = document.getElementById('boot-tool-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'boot-tool-box';
+    box.className = 'cfg-group';
+    box.innerHTML =
+      '<p class="section-title">Boot</p>' +
+      '<div class="field"><label for="boot-tool-select">Tool on boot</label>' +
+      '<select id="boot-tool-select">' +
+      '<option value="menu">Menu (no auto-start)</option>' +
+      '</select></div>' +
+      '<p class="hint" style="text-align:left">Applies on the next reboot. Triple-back still returns to the menu.</p>';
+    host.appendChild(box);
+  }
+  const sel = document.getElementById('boot-tool-select');
+  if (!sel) return;
+  try {
+    const [tr, br] = await Promise.all([fetch('/api/tools'), fetch('/api/boot/tool')]);
+    const td = await tr.json();
+    const bd = await br.json();
+    if (!tr.ok) throw new Error(td.error || ('tools HTTP ' + tr.status));
+    if (!br.ok) throw new Error(bd.error || ('boot HTTP ' + br.status));
+    const tools = td.tools || [];
+    const cur = bd.id || 'menu';
+    sel.innerHTML = '<option value="menu">Menu (no auto-start)</option>' +
+      tools.map(t => '<option value="' + esc(t.id) + '">' + esc(t.name) + '</option>').join('');
+    sel.value = tools.some(t => t.id === cur) ? cur : 'menu';
+    if (!sel.dataset.bound) {
+      sel.dataset.bound = '1';
+      sel.addEventListener('change', async () => {
+        const want = sel.value || 'menu';
+        setMsg('Saving boot tool…', 'warn');
+        try {
+          const r = await fetch('/api/boot/tool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: want
+          });
+          const t = await r.text();
+          if (!r.ok) throw new Error(t || ('HTTP ' + r.status));
+          const d = JSON.parse(t);
+          sel.value = d.id || 'menu';
+          setMsg(sel.value === 'menu' ? 'Boot: menu' : ('Boot tool: ' + sel.value), 'ok');
+        } catch (e) {
+          setMsg(String(e.message || e), 'err');
+        }
+      });
+    }
+  } catch (e) {
+    setMsg(String(e.message || e), 'err');
+  }
+}
+
 export async function loadCfg(id) {
   const info = CFG[id];
   if (!info) return;
@@ -409,6 +547,12 @@ export async function loadCfg(id) {
     setMsg('');
     return;
   }
+  if (info.mode === 'logs') {
+    clearDirty();
+    setMsg('');
+    enterLogsPanel();
+    return;
+  }
   setMsg('Loading…');
   try {
     const r = await fetch('/api/config/' + id);
@@ -418,6 +562,7 @@ export async function loadCfg(id) {
     else if (info.mode === 'network') renderNetwork(t);
     else if (info.mode === 'display') renderDisplay(t);
     else renderGroups(info.groups, t);
+    if (id === 'ui') await mountBootToolPicker();
     clearDirty();
     setMsg('Loaded', 'ok');
   } catch (err) {
@@ -430,7 +575,7 @@ export async function loadCfg(id) {
 
 export async function saveCfg(id) {
   const info = CFG[id];
-  if (!info || info.mode === 'info' || info.mode === 'backup') return;
+  if (!info || info.mode === 'info' || info.mode === 'backup' || info.mode === 'logs') return;
   setMsg('Saving…');
   try {
     const r = await fetch('/api/config/' + id, {

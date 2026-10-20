@@ -7,6 +7,8 @@
 #include <strings.h>
 
 #include "Branding.h"
+#include "storage/UsbConsole.h"
+#include "util/TextUtil.h"
 
 namespace storage {
 namespace {
@@ -76,27 +78,8 @@ constexpr const char* kSeedDisplayIni =
     "display_sleep_sec=0\n"
     "light_brightness=44\n";
 
-void trimInPlace(char* s) {
-  if (!s) {
-    return;
-  }
-  char* start = s;
-  while (*start == ' ' || *start == '\t') {
-    ++start;
-  }
-  if (start != s) {
-    memmove(s, start, strlen(start) + 1);
-  }
-  size_t n = strlen(s);
-  while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\t' || s[n - 1] == '\r')) {
-    s[--n] = '\0';
-  }
-}
-
-void copyKey(char* dst, size_t dst_len, const char* src) {
-  strncpy(dst, src, dst_len - 1);
-  dst[dst_len - 1] = '\0';
-}
+using util::copyKey;
+using util::trimInPlace;
 
 bool normalizePath(const char* in, char* out, size_t out_len) {
   if (!in || !out || out_len < 2) {
@@ -235,9 +218,27 @@ bool ConfigStore::ensureConfigDir() {
     LittleFS.remove("/config");
   }
   if (!LittleFS.mkdir("/config")) {
-    Serial.println("CFG: mkdir /config failed");
+    PoSer().println("CFG: mkdir /config failed");
     return false;
   }
+  return true;
+}
+
+bool ConfigStore::writeSeedFile(const char* path, const char* content) {
+  if (!ready_ || !path || !content) {
+    return false;
+  }
+  if (!ensureConfigDir()) {
+    return false;
+  }
+  File f = LittleFS.open(path, "w");
+  if (!f) {
+    PoSer().printf("CFG: seed write fail %s\n", path);
+    return false;
+  }
+  f.print(content);
+  f.close();
+  PoSer().printf("CFG: wrote defaults %s\n", path);
   return true;
 }
 
@@ -248,18 +249,23 @@ bool ConfigStore::seedFileIfMissing(const char* path, const char* content) {
   if (LittleFS.exists(path)) {
     return true;
   }
-  if (!ensureConfigDir()) {
+  return writeSeedFile(path, content);
+}
+
+bool ConfigStore::restoreFactoryDefaults() {
+  if (!ready_ && !begin()) {
     return false;
   }
-  File f = LittleFS.open(path, "w");
-  if (!f) {
-    Serial.printf("CFG: seed create fail %s\n", path);
+  if (!writeSeedFile(kSettingsPath, kSeedSettingsIni) || !writeSeedFile(kBtPath, kSeedBtIni) ||
+      !writeSeedFile(kMousePath, kSeedMouseIni) || !writeSeedFile(kKeyboardPath, kSeedKeyboardIni) ||
+      !writeSeedFile(kFoldersPath, kSeedFoldersIni) || !writeSeedFile(kUiPath, kSeedUiIni) ||
+      !writeSeedFile(kDisplayPath, kSeedDisplayIni)) {
     return false;
   }
-  f.print(content);
-  f.close();
-  Serial.printf("CFG: seeded %s\n", path);
-  return true;
+  const bool ok = loadSettings() && loadBluetooth() && loadMouse() && loadKeyboard() &&
+                  loadFormatFolders() && loadUi() && loadDisplay();
+  PoSer().printf("CFG: factory defaults %s\n", ok ? "ok" : "partial");
+  return ok;
 }
 
 void ConfigStore::clearSettings() {
@@ -312,7 +318,7 @@ bool ConfigStore::begin() {
     return true;
   }
   if (!LittleFS.begin(true)) {
-    Serial.println("CFG: LittleFS mount fail");
+    PoSer().println("CFG: LittleFS mount fail");
     ready_ = false;
     clearSettings();
     clearBluetooth();
@@ -324,7 +330,7 @@ bool ConfigStore::begin() {
     return false;
   }
   ready_ = true;
-  Serial.println("CFG: LittleFS ready");
+  PoSer().println("CFG: LittleFS ready");
   ensureConfigDir();
   return true;
 }
@@ -663,18 +669,18 @@ bool ConfigStore::loadDisplayFromFile() {
 
 bool ConfigStore::loadSettings() {
   if (!ready_) {
-    Serial.println("CFG: settings unavailable (no LittleFS)");
+    PoSer().println("CFG: settings unavailable (no LittleFS)");
     clearSettings();
     return false;
   }
 
   seedFileIfMissing(kSettingsPath, kSeedSettingsIni);
   if (loadSettingsFromFile()) {
-    Serial.printf("CFG: net from %s (ssid=%s)\n", kSettingsPath, wifi_ap_ssid_);
+    PoSer().printf("CFG: net from %s (ssid=%s)\n", kSettingsPath, wifi_ap_ssid_);
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kSettingsPath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kSettingsPath);
   LittleFS.remove(kSettingsPath);
   seedFileIfMissing(kSettingsPath, kSeedSettingsIni);
   if (loadSettingsFromFile()) {
@@ -686,19 +692,19 @@ bool ConfigStore::loadSettings() {
 
 bool ConfigStore::loadBluetooth() {
   if (!ready_) {
-    Serial.println("CFG: bluetooth unavailable (no LittleFS)");
+    PoSer().println("CFG: bluetooth unavailable (no LittleFS)");
     clearBluetooth();
     return false;
   }
 
   seedFileIfMissing(kBtPath, kSeedBtIni);
   if (loadBluetoothFromFile()) {
-    Serial.printf("CFG: bt from %s (remote=%s serial=%s)\n", kBtPath, ble_device_name_,
+    PoSer().printf("CFG: bt from %s (remote=%s serial=%s)\n", kBtPath, ble_device_name_,
                   ble_serial_device_name_);
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kBtPath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kBtPath);
   LittleFS.remove(kBtPath);
   seedFileIfMissing(kBtPath, kSeedBtIni);
   if (loadBluetoothFromFile()) {
@@ -710,21 +716,21 @@ bool ConfigStore::loadBluetooth() {
 
 bool ConfigStore::loadMouse() {
   if (!ready_) {
-    Serial.println("CFG: mouse unavailable (no LittleFS)");
+    PoSer().println("CFG: mouse unavailable (no LittleFS)");
     clearMouse();
     return false;
   }
 
   seedFileIfMissing(kMousePath, kSeedMouseIni);
   if (loadMouseFromFile()) {
-    Serial.printf("CFG: mouse from %s (step=%d speed=%u scroll_spd=%u scroll=%d)\n", kMousePath,
+    PoSer().printf("CFG: mouse from %s (step=%d speed=%u scroll_spd=%u scroll=%d)\n", kMousePath,
                   static_cast<int>(ble_serial_mouse_step_),
                   static_cast<unsigned>(touchpad_speed_),
                   static_cast<unsigned>(scroll_speed_), two_finger_scroll_ ? 1 : 0);
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kMousePath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kMousePath);
   LittleFS.remove(kMousePath);
   seedFileIfMissing(kMousePath, kSeedMouseIni);
   if (loadMouseFromFile()) {
@@ -736,7 +742,7 @@ bool ConfigStore::loadMouse() {
 
 bool ConfigStore::loadKeyboard() {
   if (!ready_) {
-    Serial.println("CFG: keyboard unavailable (no LittleFS)");
+    PoSer().println("CFG: keyboard unavailable (no LittleFS)");
     clearKeyboard();
     key_char_interval_ms_ = 12;
     return false;
@@ -744,12 +750,12 @@ bool ConfigStore::loadKeyboard() {
 
   seedFileIfMissing(kKeyboardPath, kSeedKeyboardIni);
   if (loadKeyboardFromFile()) {
-    Serial.printf("CFG: keyboard from %s (char_interval_ms=%u)\n", kKeyboardPath,
+    PoSer().printf("CFG: keyboard from %s (char_interval_ms=%u)\n", kKeyboardPath,
                   static_cast<unsigned>(key_char_interval_ms_));
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kKeyboardPath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kKeyboardPath);
   LittleFS.remove(kKeyboardPath);
   seedFileIfMissing(kKeyboardPath, kSeedKeyboardIni);
   if (loadKeyboardFromFile()) {
@@ -763,18 +769,18 @@ bool ConfigStore::loadKeyboard() {
 bool ConfigStore::loadFormatFolders() {
   if (!ready_ && !begin()) {
     clearFolders();
-    Serial.println("CFG: folders unavailable (no LittleFS)");
+    PoSer().println("CFG: folders unavailable (no LittleFS)");
     return false;
   }
 
   seedFileIfMissing(kFoldersPath, kSeedFoldersIni);
   if (loadFoldersFromFile()) {
-    Serial.printf("CFG: sd from %s (label=%s folders=%u)\n", kFoldersPath, volume_label_,
+    PoSer().printf("CFG: sd from %s (label=%s folders=%u)\n", kFoldersPath, volume_label_,
                   static_cast<unsigned>(folder_count_));
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kFoldersPath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kFoldersPath);
   LittleFS.remove(kFoldersPath);
   seedFileIfMissing(kFoldersPath, kSeedFoldersIni);
   if (loadFoldersFromFile()) {
@@ -786,18 +792,18 @@ bool ConfigStore::loadFormatFolders() {
 
 bool ConfigStore::loadUi() {
   if (!ready_) {
-    Serial.println("CFG: ui unavailable (no LittleFS)");
+    PoSer().println("CFG: ui unavailable (no LittleFS)");
     clearUi();
     return false;
   }
 
   seedFileIfMissing(kUiPath, kSeedUiIni);
   if (loadUiFromFile()) {
-    Serial.printf("CFG: ui from %s (splash=%s)\n", kUiPath, splashText());
+    PoSer().printf("CFG: ui from %s (splash=%s)\n", kUiPath, splashText());
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kUiPath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kUiPath);
   LittleFS.remove(kUiPath);
   seedFileIfMissing(kUiPath, kSeedUiIni);
   if (loadUiFromFile()) {
@@ -809,7 +815,7 @@ bool ConfigStore::loadUi() {
 
 bool ConfigStore::loadDisplay() {
   if (!ready_) {
-    Serial.println("CFG: display unavailable (no LittleFS)");
+    PoSer().println("CFG: display unavailable (no LittleFS)");
     clearDisplay();
     display_brightness_ = 80;
     light_brightness_ = 44;
@@ -819,14 +825,14 @@ bool ConfigStore::loadDisplay() {
 
   seedFileIfMissing(kDisplayPath, kSeedDisplayIni);
   if (loadDisplayFromFile()) {
-    Serial.printf("CFG: display from %s (bl=%u led=%u sleep=%us)\n", kDisplayPath,
+    PoSer().printf("CFG: display from %s (bl=%u led=%u sleep=%us)\n", kDisplayPath,
                   static_cast<unsigned>(display_brightness_),
                   static_cast<unsigned>(light_brightness_),
                   static_cast<unsigned>(display_sleep_sec_));
     return true;
   }
 
-  Serial.printf("CFG: bad %s — re-seeding\n", kDisplayPath);
+  PoSer().printf("CFG: bad %s — re-seeding\n", kDisplayPath);
   LittleFS.remove(kDisplayPath);
   seedFileIfMissing(kDisplayPath, kSeedDisplayIni);
   if (loadDisplayFromFile()) {

@@ -1,5 +1,5 @@
 import {
-  state, clearDirty, setMsg, esc, cssEsc, grabField, setWifiModeBadge,
+  state, clearDirty, setMsg, esc, cssEsc, grabField, setWifiModeBadge, updateStaChrome,
   signalBarsHtml, signalText, wifiLockHtml, wifiSavedHtml, wifiAutoHtml,
   cfgFields, fieldHtml, bindDirty
 } from './util.js';
@@ -189,6 +189,7 @@ export function applyWifiStatus(d){
     apUp:!!d.ap_up,
     staUp:!!d.sta_connected
   });
+  updateStaChrome(d);
   if(d.ap_ssid&&!networkKvCache.wifi_ap_ssid)networkKvCache.wifi_ap_ssid=d.ap_ssid;
   el.className=ok?'ok':'bad';
   el.textContent=[

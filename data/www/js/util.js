@@ -40,6 +40,7 @@ export const cfgFields = document.getElementById('cfg-fields');
 export const dirMetaFields = document.getElementById('dir-meta-fields');
 export const dirFolderList = document.getElementById('dir-folder-list');
 export const sdExpose = document.getElementById('sd-expose');
+export const sdExposeBoot = document.getElementById('sd-expose-boot');
 export const sdInfo = document.getElementById('sd-info');
 
 export const state = { dirty: false, currentCfg: 'network' };
@@ -155,11 +156,13 @@ export function showView(mode) {
   const fields = mode === 'fields' || mode === 'network' || mode === 'info';
   document.getElementById('view-fields').classList.toggle('active', fields);
   document.getElementById('view-sd').classList.toggle('active', mode === 'sd');
+  const logsView = document.getElementById('view-logs');
+  if (logsView) logsView.classList.toggle('active', mode === 'logs');
   const backupView = document.getElementById('view-backup');
   if (backupView) backupView.classList.toggle('active', mode === 'backup');
   const save = document.getElementById('cfg-save');
   const reload = document.getElementById('cfg-reload');
-  const hideActions = mode === 'info' || mode === 'backup';
+  const hideActions = mode === 'info' || mode === 'backup' || mode === 'logs';
   if (save) save.style.display = hideActions ? 'none' : '';
   // Network has its own Wi-Fi scan refresh — hide generic Reload there.
   if (reload) reload.style.display = (hideActions || mode === 'network') ? 'none' : '';
@@ -208,6 +211,62 @@ export function signalText(rssi) {
   const s = signalInfo(rssi);
   if (!s) return '';
   return s.label + ' (' + s.rssi + ' dBm)';
+}
+
+/**
+ * Header SSID + bars, and main "LAN" tab — only when STA is joined.
+ * @returns {boolean} sta connected
+ */
+export function updateStaChrome(d) {
+  const ok = !!(d && d.sta_connected);
+  const ssid = ok ? (d.connected_ssid || d.sta_ssid || '') : '';
+  const link = document.getElementById('sta-link');
+  const bars = document.getElementById('sta-bars');
+  const name = document.getElementById('sta-ssid');
+  const tab = document.getElementById('tab-lan');
+  if (link) {
+    link.classList.toggle('on', ok && !!ssid);
+    link.hidden = !(ok && ssid);
+    if (ok && ssid) {
+      link.title = signalText(d.rssi) ? (ssid + ' · ' + signalText(d.rssi)) : ssid;
+    }
+  }
+  if (bars) bars.innerHTML = ok ? signalBarsHtml(d.rssi) : '';
+  if (name) name.textContent = ssid || '';
+  if (tab) {
+    const wasHidden = tab.hidden;
+    tab.hidden = !ok;
+    tab.disabled = false;
+    tab.title = ok ? 'LAN — joined Wi‑Fi details' : '';
+    // Left LAN while it disappeared — return to Remote.
+    if (!ok && !wasHidden) {
+      const lanPanel = document.getElementById('panel-lan');
+      if (lanPanel && lanPanel.classList.contains('active')) {
+        document.querySelectorAll('#main-tabs button').forEach(b => {
+          b.classList.toggle('active', b.dataset.tab === 'remote');
+        });
+        document.querySelectorAll('.panel').forEach(p => {
+          p.classList.toggle('active', p.id === 'panel-remote');
+        });
+        import('./lan.js').then(m => m.leaveLanPanel()).catch(() => {});
+      }
+    }
+  }
+  const lanSsid = document.getElementById('lan-ssid');
+  const lanSig = document.getElementById('lan-signal');
+  const lanIp = document.getElementById('lan-ip');
+  const lanBssid = document.getElementById('lan-bssid');
+  const lanStatus = document.getElementById('lan-status');
+  if (lanSsid) lanSsid.textContent = ok ? (ssid || '—') : '—';
+  if (lanSig) {
+    lanSig.innerHTML = ok
+      ? (signalBarsHtml(d.rssi) + ' <span>' + esc(signalText(d.rssi) || '') + '</span>')
+      : '—';
+  }
+  if (lanIp) lanIp.textContent = ok ? (d.sta_ip || '—') : '—';
+  if (lanBssid) lanBssid.textContent = ok ? (d.sta_bssid || '—') : '—';
+  if (lanStatus) lanStatus.textContent = ok ? (d.status || 'connected') : 'not joined';
+  return ok;
 }
 
 export const DIR_META = [

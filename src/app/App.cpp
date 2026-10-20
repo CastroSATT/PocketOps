@@ -3,8 +3,11 @@
 #include "display/Display.h"
 #include "led/RgbLed.h"
 #include "Branding.h"
+#include "storage/BootPrefs.h"
 #include "storage/ConfigStore.h"
+#include "storage/DeviceLog.h"
 #include "storage/TfExpose.h"
+#include "storage/UsbConsole.h"
 #include "tools/ToolRegistry.h"
 #include "tools/bt_remote_hid/BtRemoteHidTool.h"
 #include "tools/bt_serial_hid/BtSerialHidTool.h"
@@ -38,6 +41,7 @@ void App::begin() {
 
   auto& cfg = storage::ConfigStore::instance();
   cfg.begin();
+  storage::UsbConsole::instance().begin();
   cfg.loadSettings();
   cfg.loadBluetooth();
   cfg.loadMouse();
@@ -45,7 +49,8 @@ void App::begin() {
   cfg.loadFormatFolders();
   cfg.loadUi();
   cfg.loadDisplay();
-  Serial.printf("%s boot v%s\n", cfg.productName(), branding::kFirmwareVersion);
+  storage::DeviceLog::instance().begin();
+  PO_LOGI("boot", "%s v%s", cfg.productName(), branding::kFirmwareVersion);
 
   led::RgbLed::instance().begin();
   display::begin();
@@ -55,8 +60,13 @@ void App::begin() {
   delay(cfg.splashMs());
 
   registerTools();
-  // Register MSC interface, then restore saved TF expose on/off.
+  storage::BootPrefs::instance().begin();
+  // Restore "Expose on boot" preference (live Expose is separate).
   storage::TfExpose::instance().loadSaved();
+  PO_LOGI("sd", "expose %s boot=%d present=%d",
+          storage::TfExpose::instance().enabled() ? "on" : "off",
+          storage::TfExpose::instance().bootEnabled() ? 1 : 0,
+          storage::TfExpose::instance().cardPresent() ? 1 : 0);
 
   button_.begin();
   button_.onEvent([this](input::Event e) { onButton(e); });
@@ -67,7 +77,18 @@ void App::begin() {
   syncMenuLed();
   display::noteActivity();
 
-  Serial.printf("Tools registered: %d\n", tools::ToolRegistry::instance().count());
+  PO_LOGI("boot", "tools=%d", tools::ToolRegistry::instance().count());
+
+  // Optional auto-enter tool (Config → UI → Tool on boot).
+  const char* boot_id = storage::BootPrefs::instance().toolId();
+  if (boot_id && boot_id[0]) {
+    tools::Tool* t = tools::ToolRegistry::instance().findById(boot_id);
+    if (t) {
+      enterTool(t);
+    } else {
+      PO_LOGW("boot", "unknown boot tool id=%s", boot_id);
+    }
+  }
 }
 
 void App::syncMenuLed() {
@@ -93,6 +114,7 @@ void App::loop() {
   }
 
   led::RgbLed::instance().update();
+  storage::TfExpose::instance().tick();
   display::tickPower();
   if (!display::asleep()) {
     display::tickStatusIcons();
@@ -100,7 +122,7 @@ void App::loop() {
 }
 
 void App::onButton(input::Event event) {
-  Serial.printf("btn %s\n", input::toString(event));
+  PoSer().printf("btn %s\n", input::toString(event));
   display::noteActivity();
 
   if (state_ == State::Menu) {
@@ -139,21 +161,22 @@ void App::onButton(input::Event event) {
   }
 }
 
-void App::enterSelectedTool() {
-  tools::Tool* tool = menu_.selected();
+void App::enterSelectedTool() { enterTool(menu_.selected()); }
+
+void App::enterTool(tools::Tool* tool) {
   if (!tool) {
     return;
   }
   active_ = tool;
   state_ = State::Tool;
-  Serial.printf("enter tool: %s\n", tool->id());
+  PO_LOGI("tool", "enter %s", tool->id());
   active_->onEnter();
   syncMenuLed();
 }
 
 void App::leaveTool() {
   if (active_) {
-    Serial.printf("leave tool: %s\n", active_->id());
+    PO_LOGI("tool", "leave %s", active_->id());
     active_->onExit();
   }
   active_ = nullptr;

@@ -23,6 +23,9 @@ class ConfigStore {
   bool loadUi();
   bool loadDisplay();
 
+  // Overwrite all LittleFS .ini config with firmware seed defaults and reload RAM.
+  bool restoreFactoryDefaults();
+
   // pocketops.ini — Wi-Fi / web ports
   const char* wifiMode() const { return wifi_mode_; }  // ap | sta | apsta
   const char* wifiApSsid() const { return wifi_ap_ssid_; }
@@ -99,6 +102,7 @@ class ConfigStore {
   void parseDisplayLine(char* line);
   bool ensureConfigDir();
   bool seedFileIfMissing(const char* path, const char* content);
+  bool writeSeedFile(const char* path, const char* content);
   bool loadSettingsFromFile();
   bool loadBluetoothFromFile();
   bool loadMouseFromFile();
