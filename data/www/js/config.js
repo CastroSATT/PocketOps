@@ -1,16 +1,18 @@
 import {
   state, clearDirty, setMsg, esc, parseIni, fieldHtml, bindDirty, grabField,
-  showView, cfgMeta, cfgFields, setWifiModeBadge
+  showView, cfgMeta, cfgFields, setWifiModeBadge, apiJson
 } from './util.js';
-import {
-  stopWifiPoll, startWifiPoll, refreshWifiStatus, bindWifiPanel,
-  resetJoinDraft, setNetworkKvCache, insertLiveWifiBlock,
-  refreshWifiProfiles, scanWifi, networkKvCache, HOTSPOT_FIELDS,
-  paintWifiScan, lastWifiScan, lastConnectedSsid
-} from './wifi.js';
 import { renderSd, serializeSd, refreshSdStatus } from './sd.js';
 import { enterLogsPanel } from './logs.js';
+import { enterFirmwarePanel } from './firmware.js';
 import { loadMouseCfg } from './remote.js';
+
+/** Lazy wifi module — Config → Network only (keeps other Config subtabs lighter). */
+let wifiMod = null;
+async function wifi() {
+  if (!wifiMod) wifiMod = await import('./wifi.js');
+  return wifiMod;
+}
 
 export const NET_GROUPS = [
   {title:'Wi-Fi mode',fields:[
@@ -30,7 +32,7 @@ export const BT_GROUPS = [
 ];
 export const MOUSE_GROUPS = [
   {title:'Remote touchpad',fields:[
-    {key:'touchpad_speed',label:'Pointer speed (%) · 100 = normal',type:'range',min:25,max:300,step:5},
+    {key:'touchpad_speed',label:'Pointer speed (%) · 150 = default',type:'range',min:25,max:300,step:5},
     {key:'scroll_speed',label:'Scroll speed (%) · 100 = normal',type:'range',min:25,max:300,step:5},
     {key:'two_finger_scroll',label:'Two-finger drag scroll',type:'checkbox'}
   ]},
@@ -79,6 +81,7 @@ export const CFG = {
   ui:{mode:'fields',groups:UI_GROUPS,header:'; PocketOps UI',label:'UI',note:'Splash, tool on boot (applies next reboot), and duration. Version / remote / BT / BOOT button timings are fixed in firmware.'},
   display:{mode:'display',groups:DISPLAY_GROUPS,header:'; PocketOps Display / device light',label:'Display',note:'Sliders preview live. Save to keep. Cancel restores the last saved levels.'},
   logs:{mode:'logs',label:'Logs',note:'Full on-chip session logs (max 10). No SD required.'},
+  firmware:{mode:'firmware',label:'Firmware',note:'USB DFU preference + future install path (placeholders).'},
   backup:{mode:'backup',label:'Backup',note:'Download / restore .pobak, or factory-reset on-chip settings, profiles, and logs.'}
 };
 
@@ -95,9 +98,9 @@ function setCfgActionLabels(id) {
   const reload = document.getElementById('cfg-reload');
   const save = document.getElementById('cfg-save');
   if (!reload) return;
-  if (id === 'network' || id === 'backup' || id === 'logs') {
+  if (id === 'network' || id === 'backup' || id === 'logs' || id === 'firmware') {
     reload.style.display = 'none';
-    if (save && (id === 'backup' || id === 'logs')) save.style.display = 'none';
+    if (save && (id === 'backup' || id === 'logs' || id === 'firmware')) save.style.display = 'none';
     return;
   }
   reload.style.display = '';
@@ -304,14 +307,18 @@ export function stopDeviceStatusPoll() {
   }
 }
 
+/** Leave Config tab slab — stop Display/Network polls so SoftAP stays free for Remote/LAN. */
+export function leaveConfigPanel() {
+  stopDeviceStatusPoll();
+  if (wifiMod) wifiMod.stopWifiPoll();
+}
+
 export async function refreshDeviceStatus() {
   const tempEl = document.getElementById('device-temp');
   const upEl = document.getElementById('device-uptime');
   if (!tempEl && !upEl) return;
   try {
-    const r = await fetch('/api/device/status');
-    const d = await r.json();
-    if (!r.ok) throw new Error('status fail');
+    const d = await apiJson('/api/device/status', { timeoutMs: 8000 });
     if (tempEl) {
       tempEl.textContent = d.temp_ok
         ? ('Chip temperature: ' + Number(d.temp_c).toFixed(1) + ' °C')
@@ -381,26 +388,30 @@ function netVal(k){
     if(el.type==='checkbox')return el.checked?'1':'0';
     return el.value.trim();
   }
-  return networkKvCache[k]!=null?String(networkKvCache[k]):'';
+  const cache = wifiMod ? wifiMod.networkKvCache : {};
+  return cache[k]!=null?String(cache[k]):'';
 }
 
 export function serializeNetwork(){
+  const w = wifiMod;
+  const cache = w ? w.networkKvCache : {};
   const lines=[CFG.network.header,'; '+CFG.network.label];
   NET_GROUPS.forEach(g=>g.fields.forEach(f=>{
     lines.push(f.key+'='+netVal(f.key));
   }));
   lines.push('; SoftAP hotspot (Live Wi-Fi row)');
-  HOTSPOT_FIELDS.forEach(f=>{
+  (w ? w.HOTSPOT_FIELDS : []).forEach(f=>{
     lines.push(f.key+'='+netVal(f.key));
   });
   // Last-join credentials are managed by Live Wi-Fi Connect, not the form.
   lines.push('; Last joined network (updated by Live Wi-Fi Connect)');
-  lines.push('wifi_sta_ssid='+(networkKvCache.wifi_sta_ssid||''));
-  lines.push('wifi_sta_pass='+(networkKvCache.wifi_sta_pass||''));
+  lines.push('wifi_sta_ssid='+(cache.wifi_sta_ssid||''));
+  lines.push('wifi_sta_pass='+(cache.wifi_sta_pass||''));
   return lines.join('\n')+'\n';
 }
 
 export async function saveNetworkNow(okMsg){
+  const w = await wifi();
   const r=await fetch('/api/config/network',{
     method:'POST',
     headers:{'Content-Type':'text/plain; charset=utf-8'},
@@ -408,20 +419,21 @@ export async function saveNetworkNow(okMsg){
   });
   const t=await r.text();
   if(!r.ok)throw new Error(t||('HTTP '+r.status));
-  networkKvCache.wifi_mode=grabField('wifi_mode')||networkKvCache.wifi_mode||'ap';
+  w.networkKvCache.wifi_mode=grabField('wifi_mode')||w.networkKvCache.wifi_mode||'ap';
   // Live ap/sta flags refreshed by refreshWifiStatus right after.
   clearDirty();
   setMsg(okMsg||(t||'Saved'),'ok');
-  await refreshWifiStatus();
+  await w.refreshWifiStatus();
 }
 
-export function bindWifiModeAutosave(){
+export async function bindWifiModeAutosave(){
+  const w = await wifi();
   const modeEl=document.getElementById('f-wifi_mode');
   if(!modeEl||modeEl.dataset.autosave==='1')return;
   modeEl.dataset.autosave='1';
   modeEl.addEventListener('change',async()=>{
     const next=modeEl.value;
-    const prev=networkKvCache.wifi_mode||'ap';
+    const prev=w.networkKvCache.wifi_mode||'ap';
     if(next==='sta'){
       const ok=confirm(
         'Join network only turns off the PocketOps hotspot.\n\n'+
@@ -437,9 +449,9 @@ export function bindWifiModeAutosave(){
     try{
       await saveNetworkNow('Wi-Fi mode saved — used when Wi-Fi tool starts / on boot');
       // SoftAP-only darkens join rows; other modes re-enable Connect.
-      paintWifiScan(lastWifiScan,lastConnectedSsid);
+      w.paintWifiScan(w.lastWifiScan,w.lastConnectedSsid);
       // Radio just switched modes — give it a beat, then refresh the live list.
-      setTimeout(()=>{ scanWifi({ quiet: false }); }, 400);
+      setTimeout(()=>{ w.scanWifi({ quiet: false }); }, 400);
     }catch(err){
       modeEl.value=prev;
       setMsg(String(err.message||err),'err');
@@ -449,18 +461,19 @@ export function bindWifiModeAutosave(){
 
 
 
-export function renderNetwork(text) {
+export async function renderNetwork(text) {
+  const w = await wifi();
   const { kv } = parseIni(text);
-  setNetworkKvCache(kv);
-  resetJoinDraft();
+  w.setNetworkKvCache(kv);
+  w.resetJoinDraft();
   renderGroups(NET_GROUPS, text);
-  insertLiveWifiBlock();
-  bindWifiPanel();
-  bindWifiModeAutosave();
-  refreshWifiStatus();
-  refreshWifiProfiles();
-  scanWifi({ quiet: true });
-  startWifiPoll();
+  w.insertLiveWifiBlock();
+  w.bindWifiPanel();
+  await bindWifiModeAutosave();
+  w.refreshWifiStatus();
+  w.refreshWifiProfiles();
+  w.scanWifi({ quiet: true });
+  w.startWifiPoll();
 }
 
 export function bodyForSave(id) {
@@ -531,7 +544,7 @@ async function mountBootToolPicker() {
 export async function loadCfg(id) {
   const info = CFG[id];
   if (!info) return;
-  if (info.mode !== 'network') stopWifiPoll();
+  if (info.mode !== 'network' && wifiMod) wifiMod.stopWifiPoll();
   if (info.mode !== 'display') stopDeviceStatusPoll();
   cfgMeta.textContent = info.label + (info.note ? ' - ' + info.note : '');
   showView(info.mode === 'display' ? 'fields' : info.mode);
@@ -547,6 +560,12 @@ export async function loadCfg(id) {
     setMsg('');
     return;
   }
+  if (info.mode === 'firmware') {
+    clearDirty();
+    setMsg('');
+    enterFirmwarePanel();
+    return;
+  }
   if (info.mode === 'logs') {
     clearDirty();
     setMsg('');
@@ -559,7 +578,7 @@ export async function loadCfg(id) {
     const t = await r.text();
     if (!r.ok) throw new Error(t || ('HTTP ' + r.status));
     if (info.mode === 'sd') renderSd(t);
-    else if (info.mode === 'network') renderNetwork(t);
+    else if (info.mode === 'network') await renderNetwork(t);
     else if (info.mode === 'display') renderDisplay(t);
     else renderGroups(info.groups, t);
     if (id === 'ui') await mountBootToolPicker();
@@ -575,7 +594,7 @@ export async function loadCfg(id) {
 
 export async function saveCfg(id) {
   const info = CFG[id];
-  if (!info || info.mode === 'info' || info.mode === 'backup' || info.mode === 'logs') return;
+  if (!info || info.mode === 'info' || info.mode === 'backup' || info.mode === 'logs' || info.mode === 'firmware') return;
   setMsg('Saving…');
   try {
     const r = await fetch('/api/config/' + id, {
@@ -588,7 +607,7 @@ export async function saveCfg(id) {
     clearDirty();
     setMsg(t || 'Saved', 'ok');
     if (id === 'sd') await refreshSdStatus();
-    if (id === 'network') await refreshWifiStatus();
+    if (id === 'network') await (await wifi()).refreshWifiStatus();
     if (id === 'mouse') loadMouseCfg();
     if (id === 'display') {
       displayCommitted = {

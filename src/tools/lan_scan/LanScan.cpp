@@ -2,7 +2,7 @@
 
 #include <WiFi.h>
 
-#include "storage/LanProfiles.h"
+#include "http/HttpCtx.h"
 #include "tools/lan_scan/LanScanJobs.h"
 #include "tools/lan_scan/LanScanNet.h"
 #include "tools/lan_scan/LanScanRoutes.h"
@@ -11,22 +11,27 @@
 namespace lan_scan {
 
 void registerRoutes(WebServer& http) {
-  g_http = &http;
-  if (!g_job.lock) {
-    g_job.lock = xSemaphoreCreateMutex();
-  }
-  storage::LanProfiles::instance().begin();
+  http::setServer(&http);
+  // Only /api/lan/session at boot; LanSlab + work routes on first session open.
   registerLanHttpRoutes(http);
 }
 
+bool acquireSession() {
+  return ensureLanBuffers();
+}
+
+void releaseSession() {
+  releaseLanBuffers();
+}
+
 void loop() {
-  if (!g_job.watch_on || g_job.busy || !staOk()) {
+  if (!lanBuffersReady() || !g_job || !g_job->watch_on || g_job->busy || !staOk()) {
     return;
   }
-  if (millis() - g_job.watch_last_ms < g_job.watch_interval_ms) {
+  if (millis() - g_job->watch_last_ms < g_job->watch_interval_ms) {
     return;
   }
-  g_job.watch_last_ms = millis();
+  g_job->watch_last_ms = millis();
   IPAddress from, to;
   subnetRange(from, to);
   auto* ta = new TaskArgs();

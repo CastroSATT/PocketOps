@@ -6,6 +6,7 @@
 #include "storage/BootPrefs.h"
 #include "storage/ConfigStore.h"
 #include "storage/DeviceLog.h"
+#include "storage/FirmwareUpdate.h"
 #include "storage/TfExpose.h"
 #include "storage/UsbConsole.h"
 #include "tools/ToolRegistry.h"
@@ -49,6 +50,7 @@ void App::begin() {
   cfg.loadFormatFolders();
   cfg.loadUi();
   cfg.loadDisplay();
+  storage::FirmwareUpdate::instance().begin();
   storage::DeviceLog::instance().begin();
   PO_LOGI("boot", "%s v%s", cfg.productName(), branding::kFirmwareVersion);
 

@@ -53,7 +53,10 @@ void appendStorageJson(char* body, size_t body_len, bool sd_detail) {
            sd_space ? "true" : "false");
 }
 
-void handleSdIconGet() {
+bool formatSdIconJsonImpl(char* body, size_t body_len) {
+  if (!body || body_len < 64) {
+    return false;
+  }
   // Lightweight — powers header badge. Periodically re-probes card presence for Files tab.
   auto& tf = storage::TfExpose::instance();
   static uint32_t last_probe_ms = 0;
@@ -74,12 +77,12 @@ void handleSdIconGet() {
   char storage[160];
   appendStorageJson(storage, sizeof(storage), false);
 
-  char body[320];
-  snprintf(body, sizeof(body),
-           "{\"expose\":%s,\"activity\":%s,\"present\":%s,\"files_tab\":%s,\"files_ui\":%s,%s}",
-           expose ? "true" : "false", activity ? "true" : "false", present ? "true" : "false",
-           files_tab ? "true" : "false", files_ui ? "true" : "false", storage);
-  g_http->send(200, "application/json", body);
+  const int n =
+      snprintf(body, body_len,
+               "{\"expose\":%s,\"activity\":%s,\"present\":%s,\"files_tab\":%s,\"files_ui\":%s,%s}",
+               expose ? "true" : "false", activity ? "true" : "false", present ? "true" : "false",
+               files_tab ? "true" : "false", files_ui ? "true" : "false", storage);
+  return n > 0 && static_cast<size_t>(n) < body_len;
 }
 
 void handleSdStatusGet() {
@@ -285,8 +288,12 @@ void handleSdFormatPost() {
 
 }  // namespace
 
+bool formatSdIconJson(char* body, size_t body_len) {
+  return formatSdIconJsonImpl(body, body_len);
+}
+
 void registerSdStatusRoutes(WebServer& http) {
-  http.on("/api/sd/icon", HTTP_GET, handleSdIconGet);
+  // SD badge chrome is /api/chrome (formatSdIconJson). Full card UI: /api/sd/status.
   http.on("/api/sd/status", HTTP_GET, handleSdStatusGet);
   http.on("/api/sd/expose", HTTP_POST, handleSdExposePost);
   http.on("/api/sd/expose-boot", HTTP_POST, handleSdExposeBootPost);

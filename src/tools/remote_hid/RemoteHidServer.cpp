@@ -10,14 +10,12 @@
 #include "hid/HidProtocol.h"
 #include "hid/UsbHid.h"
 #include "led/RgbLed.h"
+#include "http/HttpApi.h"
 #include "storage/ConfigStore.h"
 #include "storage/DeviceLog.h"
-#include "storage/SdFsApi.h"
 #include "storage/UsbConsole.h"
 #include "tools/lan_scan/LanScan.h"
-#include "tools/remote_hid/ConfigApi.h"
 #include "tools/remote_hid/HttpCtx.h"
-#include "tools/remote_hid/SdStatusApi.h"
 #include "tools/remote_hid/WifiApi.h"
 #include "tools/remote_hid/WwwSeed.h"
 
@@ -36,6 +34,8 @@ void onWsEvent(uint8_t /*num*/, WStype_t type, uint8_t* payload, size_t length) 
     if (n > 0) {
       g_server->setClientCount(static_cast<uint8_t>(n - 1));
     }
+  } else if (type == WStype_BIN && payload && length > 0) {
+    hid::HidProtocol::processBinary(payload, length);
   } else if (type == WStype_TEXT && payload && length > 0) {
     char buf[256];
     const size_t n = length < sizeof(buf) - 1 ? length : sizeof(buf) - 1;
@@ -45,16 +45,6 @@ void onWsEvent(uint8_t /*num*/, WStype_t type, uint8_t* payload, size_t length) 
   }
 }
 
-void registerAllRoutes() {
-  registerWwwRoutes(*g_http);
-  registerConfigApiRoutes(*g_http);
-  registerWifiRoutes(*g_http);
-  registerSdStatusRoutes(*g_http);
-  storage::registerSdFsRoutes(*g_http);
-  storage::registerDeviceLogRoutes(*g_http);
-  lan_scan::registerRoutes(*g_http);
-}
-
 }  // namespace
 
 void RemoteHidServer::begin() {
@@ -62,13 +52,8 @@ void RemoteHidServer::begin() {
     return;
   }
 
+  // Config is web-only; App already loaded INIs at boot / after web save.
   auto& cfg = storage::ConfigStore::instance();
-  cfg.loadSettings();
-  cfg.loadBluetooth();
-  cfg.loadMouse();
-  cfg.loadKeyboard();
-  cfg.loadUi();
-  cfg.loadDisplay();
   display::applyFromConfig();
   led::RgbLed::instance().setBrightnessPercent(cfg.lightBrightness());
 
@@ -100,7 +85,7 @@ void RemoteHidServer::begin() {
     page.replace("__PO_WS_PORT__", String(c.wsPort()));
     g_http->send(200, "text/html", page);
   });
-  registerAllRoutes();
+  http::registerPhoneApi(*g_http);
   g_http->onNotFound([]() {
     const String uri = g_http->uri();
     if (uri.startsWith("/css/") || uri.startsWith("/js/")) {

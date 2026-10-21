@@ -1,9 +1,12 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;font-family:system-ui,sans-serif;background:#0f1419;color:#e7ecf1}
 header{padding:10px 12px;background:#1a2330;display:flex;justify-content:space-between;align-items:center;gap:8px}
-header h1{margin:0;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header h1{margin:0;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .2s ease}
+/* Title doubles as WebSocket traffic light (green / amber / red). */
+#app-title.link-ok{color:#6d6}
+#app-title.link-warn{color:#db8}
+#app-title.link-bad{color:#d86}
 .hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0;max-width:62%}
-#status{font-size:11px;color:#8aa;white-space:nowrap}
 .sta-link{
   display:none;align-items:center;gap:6px;max-width:42vw;
   font-size:11px;color:#c5d0da;line-height:1.2

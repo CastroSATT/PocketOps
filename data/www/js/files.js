@@ -1,4 +1,4 @@
-import { esc } from './util.js';
+import { esc, apiJson } from './util.js';
 
 let cwd = '/';
 let sdPresent = false;
@@ -96,20 +96,12 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function apiJson(url, opts) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 20000);
-  try {
-    const r = await fetch(url, { ...(opts || {}), signal: ctrl.signal });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(friendlyErr(d, r.statusText));
-    return d;
-  } catch (e) {
-    if (e && e.name === 'AbortError') throw new Error('Timed out — is USB Expose on? Turn it off in Config → SD.');
-    throw e;
-  } finally {
-    clearTimeout(t);
-  }
+const FILES_TIMEOUT = {
+  timeoutMsg: 'Timed out — is USB Expose on? Turn it off in Config → SD.'
+};
+
+function filesApi(url, opts) {
+  return apiJson(url, Object.assign({}, FILES_TIMEOUT, opts || {}));
 }
 
 async function fetchSdStatus() {
@@ -210,7 +202,7 @@ export async function loadFilesDir(path) {
         return;
       }
     } catch (_) {}
-    const d = await apiJson('/api/sd/fs/list?path=' + encodeURIComponent(cwd));
+    const d = await filesApi('/api/sd/fs/list?path=' + encodeURIComponent(cwd));
     cwd = d.path || cwd;
     if (pathEl) pathEl.value = cwd;
     renderList(d.entries || []);
@@ -266,7 +258,7 @@ function renderList(entries) {
       e.stopPropagation();
       if (!confirm('Delete ' + path + (isDir ? ' and everything inside?' : '?'))) return;
       try {
-        await apiJson('/api/sd/fs/delete', {
+        await filesApi('/api/sd/fs/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path })
@@ -350,7 +342,10 @@ async function uploadFiles(fileList) {
   }
 }
 
+let filesBound = false;
 export function bindFilesPanel() {
+  if (filesBound) return;
+  filesBound = true;
   $('files-up') && $('files-up').addEventListener('click', () => loadFilesDir(parentPath(cwd)));
   $('files-refresh') && $('files-refresh').addEventListener('click', () => loadFilesDir(cwd));
   $('files-expose-close') && $('files-expose-close').addEventListener('click', closeExposeModal);
@@ -361,7 +356,7 @@ export function bindFilesPanel() {
     if (!name) return;
     const path = cwd === '/' ? '/' + name.replace(/^\/+/, '') : cwd + '/' + name.replace(/^\/+/, '');
     try {
-      await apiJson('/api/sd/fs/mkdir', {
+      await filesApi('/api/sd/fs/mkdir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path })

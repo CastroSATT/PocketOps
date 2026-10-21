@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "storage/LanHost.h"
 
 namespace lan_scan {
 
@@ -16,14 +17,8 @@ constexpr size_t kMaxHops = 20;
 
 enum class JobKind : uint8_t { None, Discover, Ports, Ping, Mdns, Traceroute, Banner, HttpProbe };
 
-struct Host {
-  char ip[16] = {};
-  char mac[18] = {};
-  char hostname[40] = {};
-  char vendor[24] = {};
-  char notes[64] = {};
-  char open_ports[96] = {};
-  int rtt_ms = -1;
+/** Live scan row = shared LanHost card + UI flags. */
+struct Host : storage::LanHost {
   bool stale = false;
   bool is_new = false;
   bool missing = false;
@@ -46,10 +41,10 @@ struct JobState {
   char target_ip[16] = {};
   char message[80] = {};
 
-  Host hosts[kMaxHosts];
+  Host* hosts = nullptr;
   size_t host_count = 0;
 
-  OpenPort open[kMaxOpenPorts];
+  OpenPort* open = nullptr;
   size_t open_count = 0;
 
   int ping_sent = 0;
@@ -79,6 +74,20 @@ struct JobState {
   SemaphoreHandle_t lock = nullptr;
 };
 
+constexpr size_t kPortTmpCap = 1024;
+
+/** Whole LAN subsystem — heap-only while LAN tab session is open. */
+struct LanSlab {
+  JobState job;
+  uint8_t* scratch = nullptr;
+  size_t scratch_bytes = 0;
+  TaskHandle_t task = nullptr;
+  uint16_t* dyn_ports = nullptr;
+  size_t dyn_n = 0;
+  /** Custom port-list parse scratch (was BSS; lives only with LAN session). */
+  uint16_t port_tmp[kPortTmpCap] = {};
+};
+
 struct TaskArgs {
   JobKind kind;
   uint32_t a;
@@ -89,11 +98,10 @@ struct TaskArgs {
   bool full_ports = false;
 };
 
-extern WebServer* g_http;
-extern JobState g_job;
-extern TaskHandle_t g_task;
-extern uint16_t* g_dyn_ports;
-extern size_t g_dyn_n;
+/** Null when LAN tab closed — always null-check or call ensureLanBuffers(). */
+extern JobState* g_job;
+extern LanSlab* g_lan_slab;
+
 extern const uint16_t kQuickPorts[];
 extern const uint16_t kCommonPorts[];
 extern const size_t kQuickPortsCount;
@@ -103,5 +111,11 @@ void lockJob();
 void unlockJob();
 bool staOk();
 void sendStaRequired();
+
+/** Create LAN slab + host/open/scratch. Safe to call repeatedly. */
+bool ensureLanBuffers();
+/** Tear down whole LAN slab after cancel. */
+void releaseLanBuffers();
+bool lanBuffersReady();
 
 }  // namespace lan_scan

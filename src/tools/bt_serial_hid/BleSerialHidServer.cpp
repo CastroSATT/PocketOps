@@ -2,13 +2,13 @@
 
 #include <BLE2902.h>
 #include <BLEDevice.h>
-#include <BLEServer.h>
 #include <BLEUtils.h>
 #include <cstring>
 
 #include "Branding.h"
 #include "USBHIDKeyboard.h"
 #include "USBHIDMouse.h"
+#include "ble/BleGattBoot.h"
 #include "hid/HidProtocol.h"
 #include "hid/UsbHid.h"
 #include "storage/ConfigStore.h"
@@ -20,24 +20,14 @@ BLEServer* g_server = nullptr;
 BLECharacteristic* g_rx = nullptr;
 BLECharacteristic* g_tx = nullptr;
 BLE2902* g_cccd = nullptr;
-bool g_advertising = false;
 
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* /*pServer*/) override {
-    if (g_serial) {
-      g_serial->setClientCount(1);
-    }
+void onClientCount(uint8_t n) {
+  if (g_serial) {
+    g_serial->setClientCount(n);
   }
+}
 
-  void onDisconnect(BLEServer* /*pServer*/) override {
-    if (g_serial) {
-      g_serial->setClientCount(0);
-    }
-    if (g_advertising) {
-      BLEDevice::startAdvertising();
-    }
-  }
-};
+ble::ClientCountCallbacks g_server_cb(onClientCount);
 
 class RxCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* characteristic) override {
@@ -65,7 +55,6 @@ class CccdCallbacks : public BLEDescriptorCallbacks {
   }
 };
 
-ServerCallbacks g_server_cb;
 RxCallbacks g_rx_cb;
 CccdCallbacks g_cccd_cb;
 
@@ -475,9 +464,7 @@ void BleSerialHidServer::begin() {
   cfg.loadSettings();
   cfg.loadBluetooth();
   cfg.loadMouse();
-  BLEDevice::init(cfg.bleSerialDeviceName());
-  g_server = BLEDevice::createServer();
-  g_server->setCallbacks(&g_server_cb);
+  g_server = ble::initServer(cfg.bleSerialDeviceName(), &g_server_cb);
 
   BLEService* service = g_server->createService(cfg.bleNusServiceUuid());
 
@@ -494,14 +481,7 @@ void BleSerialHidServer::begin() {
   g_tx->addDescriptor(g_cccd);
 
   service->start();
-
-  BLEAdvertising* advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(cfg.bleNusServiceUuid());
-  advertising->setScanResponse(true);
-  advertising->setMinPreferred(0x06);
-  advertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-  g_advertising = true;
+  ble::startServiceAdvertising(cfg.bleNusServiceUuid());
 
   hid::UsbHid::instance().begin();
   running_ = true;
@@ -519,11 +499,7 @@ void BleSerialHidServer::end() {
     return;
   }
 
-  g_advertising = false;
-  if (BLEDevice::getAdvertising()) {
-    BLEDevice::getAdvertising()->stop();
-  }
-  BLEDevice::deinit(true);
+  ble::stopAndDeinit();
   g_server = nullptr;
   g_rx = nullptr;
   g_tx = nullptr;

@@ -141,14 +141,16 @@ export function setSdIconState(expose, activity, present, filesTab, filesUi) {
   if (filesTab !== undefined) setFilesTabVisible(!!filesTab);
   else if (present !== undefined) setFilesTabVisible(!!present);
 }
-async function pollSdIcon() {
-  try {
-    const r = await fetch('/api/sd/icon');
-    if (!r.ok) return;
-    const d = await r.json();
-    setSdIconState(d.expose, d.activity, d.present, d.files_tab, d.files_ui);
-    applyStorageMeters(d);
-  } catch (_) {}
+/** Apply SD half of `/api/chrome` to the header badge. */
+export function applyChromeSd(d) {
+  if (!d) return;
+  setSdIconState(d.expose, d.activity, d.present, d.files_tab, d.files_ui);
+  applyStorageMeters(d);
+}
+
+/** True when USB Expose is on — chrome poll runs faster for activity flash. */
+export function sdExposeActive() {
+  return !!sdIconExpose;
 }
 
 /** Refresh badge after Files tab enter/leave (DOM class already updated). */
@@ -178,11 +180,10 @@ async function toggleExposeFromBadge() {
   }
 }
 
+/** Badge click + local flash animation. Polling is `/api/chrome` in app.js. */
 export function startSdIconWatch() {
-  pollSdIcon();
-  setInterval(pollSdIcon, 180);
   if (sdFlashTimer) clearInterval(sdFlashTimer);
-  sdFlashTimer = setInterval(paintSdBadge, 90);
+  sdFlashTimer = setInterval(paintSdBadge, 120);
   if (sdBadge && !sdBadgeClickBound) {
     sdBadgeClickBound = true;
     sdBadge.addEventListener('click', () => toggleExposeFromBadge());

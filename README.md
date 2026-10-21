@@ -5,13 +5,13 @@
 </p>
 
 <p align="center">
-  <strong>Firmware v0.2.1</strong> · LilyGO <a href="https://lilygo.cc/products/t-dongle-s3">T-Dongle-S3</a><br/>
+  <strong>Firmware v0.2.2</strong> · LilyGO <a href="https://lilygo.cc/products/t-dongle-s3">T-Dongle-S3</a><br/>
   USB stick · tiny screen · remote HID · on-device config · microSD tool kit
 </p>
 
 ---
 
-Plug it into USB-A, pick a tool on the screen, and use it as a remote keyboard/mouse (Wi‑Fi or Bluetooth). Open the **web UI** for touchpad + full **Config** (network, mouse, SD, display, backup…). Flip **Expose** on and the host sees a FAT drive packed with field tools.
+Plug it into USB-A, pick a tool on the screen, and use it as a remote keyboard/mouse (Wi‑Fi or Bluetooth). Open the **web UI** for touchpad, **LAN** scan, **Files**, and **Config** (network, mouse, SD, display, logs, firmware, backup…). Flip **Expose** on and the host sees a FAT drive packed with field tools.
 
 **Plain English:** a smart USB stick with a screen. Your phone drives the mouse/keyboard; settings live on the stick (not buried in code); the SD card can show up like a normal flash drive when you want it.
 
@@ -30,13 +30,18 @@ Plug it into USB-A, pick a tool on the screen, and use it as a remote keyboard/m
 | Feature | Notes |
 | --- | --- |
 | **LittleFS settings** | Runtime `.ini` under `data/config/` — seed once, then edit on-device or via web |
-| **Modular web UI** | `data/www/` — **Remote** + **Config** tabs (served from the stick) |
+| **Modular web UI** | `data/www/` — **Remote** · **LAN** · **Files** · **Config** (lazy-loaded modules) |
 | **Wi‑Fi modes** | `ap` · `sta` · `apsta` — SoftAP, join LAN, or both |
 | **Wi‑Fi profiles** | Saved SSIDs/passwords, auto-join, SoftAP settings modal |
+| **LAN scan** | Discover / ports / ping / mDNS / traceroute; profiles on LittleFS; heap slab while tab open |
+| **Files** | Browse / upload / download / mkdir / delete on the microSD over SoftAP |
 | **Mouse / keyboard tune** | Touchpad speed, two-finger scroll, typing interval |
+| **Binary HID WebSocket** | Move / buttons / keys / text as compact binary frames (Wi‑Fi Remote page) |
 | **SD from the web** | Expose toggle, folder list after Format, Format with progress (`/Logs` locked) |
 | **Display** | TFT brightness, screen sleep, status-LED brightness |
-| **Config backup** | Download / restore `.pobak` (all on-chip `.ini` + Wi‑Fi profiles) |
+| **Device logs** | On-chip session logs under Config → Logs |
+| **Firmware / DFU** | Config → Firmware — USB DFU switch (reboot to arm; default off) |
+| **Config backup** | Streamed download / restore `.pobak` (on-chip `.ini` + Wi‑Fi profiles) |
 | **Chip temp** | Shown in the Remote HID web meta / status path |
 | **Board config script** | `config/board.ini` → pins/TFT at build time |
 
@@ -102,13 +107,15 @@ Full pin map / schematics: [`reference/`](reference/README.md) (local pack; bulk
 
 ---
 
-## Web UI (Remote + Config)
+## Web UI
 
 With **WiFi Remote HID** running, open the URL shown on the TFT (SoftAP default `http://192.168.4.1`).
 
 | Tab | Contents |
 | --- | --- |
-| **Remote** | Touchpad, mouse buttons, hotkeys, live typing |
+| **Remote** | Touchpad, mouse buttons, hotkeys, live typing (WebSocket HID; binary frames) |
+| **LAN** | Host discover, port scan, ping, mDNS, traceroute, saved profiles / CSV (shown when STA is up) |
+| **Files** | microSD browser (list / upload / download / mkdir / delete) |
 | **Config → Network** | Wi‑Fi mode, SoftAP modal, scan/join, saved profiles |
 | **Config → Bluetooth** | BLE advertise names |
 | **Config → Mouse** | Touchpad / scroll speed, two-finger scroll, BT serial step |
@@ -116,6 +123,8 @@ With **WiFi Remote HID** running, open the URL shown on the TFT (SoftAP default 
 | **Config → SD** | Expose, card info, volume label, Format folder list, Format |
 | **Config → UI** | Splash text / duration |
 | **Config → Display** | TFT brightness, sleep seconds, LED brightness |
+| **Config → Logs** | On-chip device session logs |
+| **Config → Firmware** | USB DFU arm switch (reboot required) |
 | **Config → Backup** | Download / upload `.pobak` |
 
 Header badges: **Wi‑Fi mode** (AP / STA / AP+) and **SD** (expose), colour-matched to the stick LED/TFT.
@@ -268,18 +277,23 @@ PocketOps/
 │   └── generated/                # from board + www seed scripts
 ├── data/
 │   ├── config/*.ini              # LittleFS settings
-│   └── www/                      # Remote + Config web UI
+│   └── www/                      # Remote · LAN · Files · Config web UI
 ├── src/
 │   ├── app/ display/ input/ led/ hid/
-│   ├── storage/                  # ConfigStore, TfExpose, WifiProfiles, ConfigBackup
+│   ├── http/                     # g_http + registerPhoneApi façade
+│   ├── ble/                      # shared BLE GATT bootstrap (BT tools)
+│   ├── storage/                  # ConfigStore (INI schema), profiles, backup, SD FS
 │   ├── system/                   # ChipTemp
+│   ├── util/                     # JsonWriter, JsonEsc, TextUtil, JSON arena pool
 │   ├── ui/
 │   └── tools/
+│       ├── remote_hid/           # SoftAP server, Wi‑Fi/Config/SD APIs, HID WS
+│       ├── lan_scan/             # /api/lan/* (session slab + route modules)
+│       ├── bt_remote_hid/ · bt_serial_hid/ · tf_card/
 ├── scripts/
 │   ├── sync-to-pocketops.sh|.ps1|.cmd
 │   ├── apply_board_config.py
-│   ├── embed_www_seed.py
-│   └── split_www_modules.py
+│   └── embed_www_seed.py
 ├── sdcard-layout/
 ├── docs/images/
 ├── web/bt-remote.html            # BT Web Bluetooth helper page
@@ -317,6 +331,7 @@ Ignored: `.pio`, `.venv/`, VS Code generated IntelliSense, macOS junk, **kit bin
 | **0.1.0** | Splash; TF Expose/Check/Format; Wi‑Fi + BLE HID; SD badge; sync scripts |
 | **0.2.0** | Modular web UI; Wi‑Fi modes + profiles; Config tabs; SoftAP live UX |
 | **0.2.1** | Display brightness / sleep / LED; chip temp; SoftAP modal; SD `/Logs` locked; badge/LED colour sync; `.pobak` backup |
+| **0.2.2** | LAN + Files tabs; device logs; DFU switch; streamed `.pobak`; binary HID WS; LAN session slab + lazy `/api/lan/*`; `/api/chrome` header poll; route/module splits; shared BLE bootstrap; INI schema |
 
 ---
 

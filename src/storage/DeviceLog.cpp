@@ -8,6 +8,7 @@
 #include <cstring>
 #include <ctime>
 
+#include "http/HttpCtx.h"
 #include "storage/ConfigStore.h"
 #include "storage/TfExpose.h"
 #include "storage/UsbConsole.h"
@@ -15,9 +16,10 @@
 namespace storage {
 namespace {
 
+using http::g_http;
+
 constexpr const char* kDir = "/logs";
 constexpr const char* kIndex = "/logs/index.txt";
-WebServer* g_http = nullptr;
 
 const char* levelStr(DeviceLog::Level level) {
   switch (level) {
@@ -230,9 +232,9 @@ void DeviceLog::startNewSession() {
 
 void DeviceLog::loadEnabled() {
   Preferences prefs;
-  enabled_ = true;
+  enabled_ = false;
   if (prefs.begin(ConfigStore::instance().nvsNamespace(), true)) {
-    enabled_ = prefs.getBool("log_on", true);
+    enabled_ = prefs.getBool("log_on", false);
     prefs.end();
   }
 }
@@ -567,7 +569,7 @@ void handleLogsDeletePost() {
 }
 
 void registerDeviceLogRoutes(WebServer& http) {
-  g_http = &http;
+  http::setServer(&http);
   http.on("/api/logs", HTTP_GET, handleLogsListGet);
   http.on("/api/logs/file", HTTP_GET, handleLogsFileGet);
   http.on("/api/logs/delete", HTTP_POST, handleLogsDeletePost);

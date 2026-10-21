@@ -71,7 +71,7 @@ class DeviceLog {
   char current_[kMaxNameLen] = {};
   size_t current_bytes_ = 0;
   bool ready_ = false;     // LittleFS /logs usable
-  bool enabled_ = true;    // write new lines (default on)
+  bool enabled_ = false;   // write new lines (default off — enable in Config → Logs)
 };
 
 void registerDeviceLogRoutes(WebServer& http);

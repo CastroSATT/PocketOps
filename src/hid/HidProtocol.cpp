@@ -87,6 +87,52 @@ uint8_t HidProtocol::mapMouseButton(int index) {
   }
 }
 
+void HidProtocol::processBinary(const uint8_t* data, size_t len) {
+  if (!data || len < 1) {
+    return;
+  }
+  auto& h = UsbHid::instance();
+  switch (data[0]) {
+    case 'M':  // dx dy wheel
+      if (len >= 4) {
+        h.mouseMove(static_cast<int8_t>(data[1]), static_cast<int8_t>(data[2]),
+                    static_cast<int8_t>(data[3]));
+      }
+      break;
+    case 'B':  // btn index, down=1/up=0
+      if (len >= 3) {
+        const uint8_t btn = mapMouseButton(data[1]);
+        if (data[2]) {
+          h.mousePress(btn);
+        } else {
+          h.mouseRelease(btn);
+        }
+      }
+      break;
+    case 'K':  // browser keycode
+      if (len >= 2) {
+        const int mapped = mapBrowserKey(data[1]);
+        if (mapped >= 0) {
+          h.keyTap(static_cast<uint8_t>(mapped));
+        }
+      }
+      break;
+    case 'X':  // utf-8 text payload
+      if (len >= 2) {
+        char text[180];
+        const size_t n = (len - 1) < sizeof(text) - 1 ? (len - 1) : sizeof(text) - 1;
+        memcpy(text, data + 1, n);
+        text[n] = '\0';
+        if (text[0]) {
+          h.typeText(text);
+        }
+      }
+      break;
+    default:
+      break;
+  }
+}
+
 void HidProtocol::processMessage(const char* json) {
   if (!json) {
     return;

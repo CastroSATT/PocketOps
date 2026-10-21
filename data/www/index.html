@@ -9,7 +9,7 @@
 </head>
 <body>
 <header>
-  <h1>__PO_REMOTE_TITLE__</h1>
+  <h1 id="app-title" class="link-warn" title="Connecting…">__PO_REMOTE_TITLE__</h1>
   <div class="hdr-right">
     <span id="sta-link" class="sta-link" hidden title="Joined Wi‑Fi">
       <span id="sta-bars" class="sta-bars" aria-hidden="true"></span>
@@ -25,7 +25,6 @@
       </span>
     </span>
     <span id="sd-badge" title="SD card" role="button" tabindex="0">SD</span>
-    <span id="status">connecting…</span>
   </div>
 </header>
 
@@ -55,7 +54,7 @@
       <button type="button" data-k="40">↓</button>
       <button type="button" data-k="39">→</button>
     </div>
-    <input id="text" placeholder="Tap here · type live…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+    <input id="text" type="text" enterkeyhint="done" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Tap here · type live…"/>
     <p class="hint">Mouse: move/click only over the pad (leave = stop). Touch: tap = click · drag = move · two-finger = scroll. Tune under Config → Mouse</p>
   </main>
 </section>
@@ -203,6 +202,7 @@
     <button type="button" data-cfg="ui">UI</button>
     <button type="button" data-cfg="display">Display</button>
     <button type="button" data-cfg="logs">Logs</button>
+    <button type="button" data-cfg="firmware">Firmware</button>
     <button type="button" data-cfg="backup">Backup</button>
   </nav>
   <p id="cfg-meta"></p>
@@ -273,14 +273,14 @@
       <div class="sd-row" style="margin-bottom:6px">
         <span>Save logs on device</span>
         <label class="switch" title="When off, no new log lines are written (old files stay)">
-          <input type="checkbox" id="logs-enable" checked/>
+          <input type="checkbox" id="logs-enable"/>
           <span class="slider"></span>
         </label>
       </div>
       <div class="sd-row" style="margin-bottom:8px">
         <span>USB Serial console</span>
         <label class="switch" title="Mute USB CDC Serial chatter when you do not need a cable monitor">
-          <input type="checkbox" id="logs-serial" checked/>
+          <input type="checkbox" id="logs-serial"/>
           <span class="slider"></span>
         </label>
       </div>
@@ -296,11 +296,35 @@
     </div>
   </div>
 
+  <div id="view-firmware" class="cfg-view">
+    <div class="cfg-scroll">
+      <div class="backup-box">
+        <p class="section-title">USB DFU mode</p>
+        <p class="hint" style="text-align:left">Off by default. Toggle saves to the device and reboots so USB DFU is really armed (on) or not (off). Leave off for normal use.</p>
+        <div class="sd-row" style="margin-bottom:6px">
+          <span>Enable USB DFU</span>
+          <label class="switch" title="Arm USB DFU on next boot (default off)">
+            <input type="checkbox" id="fw-dfu"/>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <p class="hint" style="text-align:left" id="fw-dfu-status">Status: DFU OFF (default)</p>
+      </div>
+      <div class="backup-box">
+        <p class="section-title">Install firmware</p>
+        <p class="hint" style="text-align:left">Placeholder for a future web / USB install path (e.g. <code>.bin</code>). Disabled until DFU / OTA is implemented.</p>
+        <input type="file" id="fw-file" accept=".bin,application/octet-stream" hidden disabled/>
+        <button type="button" class="icon-btn" id="fw-install" disabled>Install firmware…</button>
+        <p class="hint" style="text-align:left" id="fw-install-note">Coming soon — use PlatformIO / serial flash for now.</p>
+      </div>
+    </div>
+  </div>
+
   <div id="view-backup" class="cfg-view">
     <div class="cfg-scroll">
       <div class="backup-box">
         <p class="section-title">Download</p>
-        <p class="hint" style="text-align:left">Saves a dated <code>.pobak</code> of all on-chip settings: network, Bluetooth, mouse, keyboard, SD folders, UI, display, Wi‑Fi profiles (passwords included), plus NVS prefs (Expose on boot, boot tool, USB serial, device log).</p>
+        <p class="hint" style="text-align:left">Saves a dated <code>.pobak</code> of all on-chip settings: network, Bluetooth, mouse, keyboard, SD folders, UI, display, Wi‑Fi profiles (passwords included), plus NVS prefs (Expose on boot, boot tool, USB serial, device log, USB DFU).</p>
         <button type="button" class="icon-btn" id="backup-download">Download backup</button>
       </div>
       <div class="backup-box">
@@ -313,7 +337,7 @@
         <p class="section-title">Factory reset</p>
         <p class="hint" style="text-align:left">Wipes selected on-chip data and reloads firmware defaults. Does not format the microSD card. SoftAP may return to <code>PocketOps</code> / <code>pocketops</code>.</p>
         <label class="reset-opt"><input type="checkbox" id="fr-settings" checked/> Settings (.ini defaults: network, BT, mouse, keyboard, SD folders, UI, display)</label>
-        <label class="reset-opt"><input type="checkbox" id="fr-nvs" checked/> NVS prefs (Expose on boot, boot tool, USB serial, device log on/off)</label>
+        <label class="reset-opt"><input type="checkbox" id="fr-nvs" checked/> NVS prefs (Expose on boot, boot tool, USB serial, device log, USB DFU)</label>
         <label class="reset-opt"><input type="checkbox" id="fr-wifi" checked/> Wi‑Fi profiles (saved networks + passwords)</label>
         <label class="reset-opt"><input type="checkbox" id="fr-lan" checked/> LAN scan profiles</label>
         <label class="reset-opt"><input type="checkbox" id="fr-logs" checked/> Device logs (finished sessions; keeps live log)</label>

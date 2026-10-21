@@ -86,13 +86,29 @@ class ConfigStore {
   void ensureLogsFolder();  // /Logs is always required for device logging
   void clearUi();
   void clearDisplay();
-  void applyNetSetting(const char* key, const char* value);
-  void applyBtSetting(const char* key, const char* value);
-  void applyMouseSetting(const char* key, const char* value);
-  void applyKeyboardSetting(const char* key, const char* value);
-  void applyFolderSetting(const char* key, const char* value);
-  void applyUiSetting(const char* key, const char* value);
-  void applyDisplaySetting(const char* key, const char* value);
+
+  /** INI key → field row (see ConfigStore.cpp schema tables). */
+  struct IniField {
+    const char* key;
+    enum Type : uint8_t {
+      Str,
+      Int,
+      I8,
+      U8,
+      U16,
+      U32,
+      BoolSet,   // bool + companion “was set” flag at aux
+      WifiMode,  // ap | sta | apsta
+      Ignore
+    } type;
+    uint16_t offset;
+    uint16_t aux;  // str capacity, or BoolSet flag offset
+    int32_t min_v;
+    int32_t max_v;
+  };
+
+  void applyIniSchema(const IniField* fields, size_t count, const char* key, const char* value);
+  void parseSchemaLine(char* line, const IniField* fields, size_t count);
   void parseSettingsLine(char* line);
   void parseBtLine(char* line);
   void parseMouseLine(char* line);
@@ -110,6 +126,9 @@ class ConfigStore {
   bool loadFoldersFromFile();
   bool loadUiFromFile();
   bool loadDisplayFromFile();
+  /** Seed → load → re-seed on bad file. Shared path for all INI domains. */
+  bool loadSeededIni(const char* tag, const char* path, const char* seed,
+                     void (ConfigStore::*clear)(), bool (ConfigStore::*fromFile)());
 
   bool ready_ = false;
 

@@ -1,4 +1,4 @@
-import { esc, signalBarsHtml, signalText } from './util.js';
+import { esc, signalBarsHtml, signalText, apiJson } from './util.js';
 
 let hosts = [];
 let selectedIp = '';
@@ -39,15 +39,7 @@ function setProgress(pct) {
 }
 
 async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const ct = r.headers.get('content-type') || '';
-  if (ct.includes('application/json')) {
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || r.statusText);
-    return d;
-  }
-  if (!r.ok) throw new Error(await r.text());
-  return r;
+  return apiJson(path, Object.assign({ timeoutMs: 30000 }, opts || {}));
 }
 
 function toolOut(t) {
@@ -372,6 +364,13 @@ async function editNote(h) {
 
 export async function enterLanPanel() {
   lanActive = true;
+  try {
+    await api('/api/lan/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'open'
+    });
+  } catch (_) {}
   await refreshInfo();
   await autoload();
 }
@@ -391,9 +390,21 @@ export async function leaveLanPanel() {
     } catch (_) {}
   }
   if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
+  try {
+    await api('/api/lan/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'close'
+    });
+  } catch (_) {}
+  hosts = [];
+  renderHosts();
 }
 
+let lanBound = false;
 export function bindLanPanel() {
+  if (lanBound) return;
+  lanBound = true;
   document.addEventListener('click', e => {
     if (!$('lan-ctx') || $('lan-ctx').hidden) return;
     if (!e.target.closest('#lan-ctx')) hideCtx();

@@ -91,7 +91,7 @@ bool arpProbe(const IPAddress& ip, uint8_t mac_out[6], int* rtt_ms) {
     return false;
   }
   for (int i = 0; i < 10; ++i) {
-    if (g_job.cancel) {
+    if (g_job && g_job->cancel) {
       return false;
     }
     if (arpLookup(ip, mac_out)) {
@@ -155,7 +155,7 @@ bool icmpPingOnce(const IPAddress& ip, int* rtt_ms, uint32_t timeout_ms) {
   esp_ping_start(ping);
   const uint32_t start = millis();
   while (!ctx.done && millis() - start < timeout_ms + 500) {
-    if (g_job.cancel) {
+    if (g_job && g_job->cancel) {
       break;
     }
     delay(10);
@@ -237,9 +237,12 @@ void appendOpenPortStr(char* buf, size_t buflen, uint16_t port) {
 }
 
 Host* findHostByIp(const char* ip) {
-  for (size_t i = 0; i < g_job.host_count; ++i) {
-    if (strcmp(g_job.hosts[i].ip, ip) == 0) {
-      return &g_job.hosts[i];
+  if (!g_job->hosts || !ip) {
+    return nullptr;
+  }
+  for (size_t i = 0; i < g_job->host_count; ++i) {
+    if (strcmp(g_job->hosts[i].ip, ip) == 0) {
+      return &g_job->hosts[i];
     }
   }
   return nullptr;

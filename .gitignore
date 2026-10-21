@@ -11,6 +11,9 @@
 Thumbs.db
 *.swp
 *~
+*.bak
+*.bak_*
+*.orig
 
 # Card kit payloads (keep folder skeleton + README.txt; ignore binaries)
 sdcard-layout/**/*

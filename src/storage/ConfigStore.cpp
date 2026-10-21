@@ -2,6 +2,7 @@
 
 #include <FS.h>
 #include <LittleFS.h>
+#include <cstddef>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -46,7 +47,7 @@ constexpr const char* kSeedMouseIni =
     "; PocketOps Mouse\n"
     "\n"
     "ble_serial_mouse_step=40\n"
-    "touchpad_speed=100\n"
+    "touchpad_speed=150\n"
     "scroll_speed=100\n"
     "two_finger_scroll=1\n";
 
@@ -335,181 +336,161 @@ bool ConfigStore::begin() {
   return true;
 }
 
-void ConfigStore::applyNetSetting(const char* key, const char* value) {
-  if (strcmp(key, "wifi_mode") == 0) {
-    if (strcmp(value, "ap") == 0 || strcmp(value, "sta") == 0 || strcmp(value, "apsta") == 0) {
-      copyKey(wifi_mode_, sizeof(wifi_mode_), value);
+void ConfigStore::applyIniSchema(const IniField* fields, size_t count, const char* key,
+                                const char* value) {
+  if (!fields || !key || !value) {
+    return;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    if (strcmp(fields[i].key, key) != 0) {
+      continue;
     }
-  } else if (strcmp(key, "wifi_ap_ssid") == 0) {
-    copyKey(wifi_ap_ssid_, sizeof(wifi_ap_ssid_), value);
-  } else if (strcmp(key, "wifi_ap_pass") == 0) {
-    copyKey(wifi_ap_pass_, sizeof(wifi_ap_pass_), value);
-  } else if (strcmp(key, "wifi_ap_channel") == 0) {
-    const int v = atoi(value);
-    if (v >= 1 && v <= 13) {
-      wifi_ap_channel_ = v;
+    char* base = reinterpret_cast<char*>(this) + fields[i].offset;
+    switch (fields[i].type) {
+      case IniField::Ignore:
+        return;
+      case IniField::Str:
+        copyKey(base, fields[i].aux, value);
+        return;
+      case IniField::WifiMode:
+        if (strcmp(value, "ap") == 0 || strcmp(value, "sta") == 0 || strcmp(value, "apsta") == 0) {
+          copyKey(base, fields[i].aux, value);
+        }
+        return;
+      case IniField::BoolSet: {
+        *reinterpret_cast<bool*>(base) =
+            !(value[0] == '0' || value[0] == 'n' || value[0] == 'N' || value[0] == 'f' ||
+              value[0] == 'F');
+        *reinterpret_cast<bool*>(reinterpret_cast<char*>(this) + fields[i].aux) = true;
+        return;
+      }
+      case IniField::Int: {
+        const long v = atol(value);
+        if (v >= fields[i].min_v && v <= fields[i].max_v) {
+          *reinterpret_cast<int*>(base) = static_cast<int>(v);
+        }
+        return;
+      }
+      case IniField::I8: {
+        const long v = atol(value);
+        if (v >= fields[i].min_v && v <= fields[i].max_v) {
+          *reinterpret_cast<int8_t*>(base) = static_cast<int8_t>(v);
+        }
+        return;
+      }
+      case IniField::U8: {
+        const long v = atol(value);
+        if (v >= fields[i].min_v && v <= fields[i].max_v) {
+          *reinterpret_cast<uint8_t*>(base) = static_cast<uint8_t>(v);
+        }
+        return;
+      }
+      case IniField::U16: {
+        const long v = atol(value);
+        if (v >= fields[i].min_v && v <= fields[i].max_v) {
+          *reinterpret_cast<uint16_t*>(base) = static_cast<uint16_t>(v);
+        }
+        return;
+      }
+      case IniField::U32: {
+        const long v = atol(value);
+        if (v >= fields[i].min_v && v <= fields[i].max_v) {
+          *reinterpret_cast<uint32_t*>(base) = static_cast<uint32_t>(v);
+        }
+        return;
+      }
     }
-  } else if (strcmp(key, "wifi_sta_ssid") == 0) {
-    copyKey(wifi_sta_ssid_, sizeof(wifi_sta_ssid_), value);
-  } else if (strcmp(key, "wifi_sta_pass") == 0) {
-    copyKey(wifi_sta_pass_, sizeof(wifi_sta_pass_), value);
-  } else if (strcmp(key, "web_port") == 0) {
-    const int v = atoi(value);
-    if (v > 0 && v < 65536) {
-      web_port_ = v;
-    }
-  } else if (strcmp(key, "ws_port") == 0) {
-    const int v = atoi(value);
-    if (v > 0 && v < 65536) {
-      ws_port_ = v;
-    }
-  } else if (strcmp(key, "ble_serial_mouse_step") == 0 ||
-             strcmp(key, "ble_device_name") == 0 ||
-             strcmp(key, "ble_serial_device_name") == 0 ||
-             strcmp(key, "ble_service_uuid") == 0 ||
-             strcmp(key, "ble_char_uuid") == 0 ||
-             strcmp(key, "ble_nus_service_uuid") == 0 ||
-             strcmp(key, "ble_nus_rx_uuid") == 0 ||
-             strcmp(key, "ble_nus_tx_uuid") == 0) {
-    // Legacy network keys — BT lives in pocketops_bt.ini / Branding.h
+    return;
   }
 }
 
-void ConfigStore::applyBtSetting(const char* key, const char* value) {
-  if (strcmp(key, "ble_device_name") == 0) {
-    copyKey(ble_device_name_, sizeof(ble_device_name_), value);
-  } else if (strcmp(key, "ble_serial_device_name") == 0) {
-    copyKey(ble_serial_device_name_, sizeof(ble_serial_device_name_), value);
-  } else if (strcmp(key, "ble_serial_mouse_step") == 0 ||
-             strcmp(key, "ble_service_uuid") == 0 ||
-             strcmp(key, "ble_char_uuid") == 0 ||
-             strcmp(key, "ble_nus_service_uuid") == 0 ||
-             strcmp(key, "ble_nus_rx_uuid") == 0 ||
-             strcmp(key, "ble_nus_tx_uuid") == 0) {
-    // Mouse step → pocketops_mouse.ini; UUIDs → Branding.h
+void ConfigStore::parseSchemaLine(char* line, const IniField* fields, size_t count) {
+  char* key = nullptr;
+  char* value = nullptr;
+  if (!splitKeyValue(line, &key, &value)) {
+    return;
   }
-}
-
-void ConfigStore::applyMouseSetting(const char* key, const char* value) {
-  if (strcmp(key, "ble_serial_mouse_step") == 0) {
-    const int v = atoi(value);
-    if (v >= 1 && v <= 127) {
-      ble_serial_mouse_step_ = static_cast<int8_t>(v);
-    }
-  } else if (strcmp(key, "touchpad_speed") == 0) {
-    const int v = atoi(value);
-    if (v >= 25 && v <= 300) {
-      touchpad_speed_ = static_cast<uint16_t>(v);
-    }
-  } else if (strcmp(key, "scroll_speed") == 0) {
-    const int v = atoi(value);
-    if (v >= 25 && v <= 300) {
-      scroll_speed_ = static_cast<uint16_t>(v);
-    }
-  } else if (strcmp(key, "two_finger_scroll") == 0) {
-    two_finger_scroll_set_ = true;
-    two_finger_scroll_ =
-        !(value[0] == '0' || value[0] == 'n' || value[0] == 'N' || value[0] == 'f' ||
-          value[0] == 'F');
-  }
-}
-
-void ConfigStore::applyKeyboardSetting(const char* key, const char* value) {
-  if (strcmp(key, "char_interval_ms") == 0) {
-    const int v = atoi(value);
-    if (v >= 0 && v <= 100) {
-      key_char_interval_ms_ = static_cast<uint16_t>(v);
-    }
-  }
-}
-
-void ConfigStore::applyFolderSetting(const char* key, const char* value) {
-  if (strcmp(key, "volume_label") == 0) {
-    copyKey(volume_label_, sizeof(volume_label_), value);
-  } else if (strcmp(key, "nvs_namespace") == 0) {
-    copyKey(nvs_namespace_, sizeof(nvs_namespace_), value);
-  }
-}
-
-void ConfigStore::applyUiSetting(const char* key, const char* value) {
-  if (strcmp(key, "splash") == 0 || strcmp(key, "product_name") == 0) {
-    // product_name kept as legacy alias for splash
-    copyKey(splash_, sizeof(splash_), value);
-  } else if (strcmp(key, "splash_ms") == 0) {
-    const long v = atol(value);
-    if (v > 0 && v <= 60000) {
-      splash_ms_ = static_cast<uint32_t>(v);
-    }
-  } else if (strcmp(key, "btn_debounce_ms") == 0 ||
-             strcmp(key, "btn_multi_gap_ms") == 0 ||
-             strcmp(key, "btn_long_ms") == 0 ||
-             strcmp(key, "firmware_version") == 0 ||
-             strcmp(key, "remote_page_title") == 0 ||
-             strcmp(key, "ble_serial_banner") == 0) {
-    // Legacy keys ignored — baked in include/Branding.h
-  }
-}
-
-void ConfigStore::applyDisplaySetting(const char* key, const char* value) {
-  if (strcmp(key, "display_brightness") == 0) {
-    const int v = atoi(value);
-    if (v >= 5 && v <= 100) {
-      display_brightness_ = static_cast<uint8_t>(v);
-    }
-  } else if (strcmp(key, "light_brightness") == 0) {
-    const int v = atoi(value);
-    if (v >= 5 && v <= 100) {
-      light_brightness_ = static_cast<uint8_t>(v);
-    }
-  } else if (strcmp(key, "display_sleep_sec") == 0) {
-    const long v = atol(value);
-    if (v >= 0 && v <= 86400) {
-      display_sleep_sec_ = static_cast<uint32_t>(v);
-    }
-  }
+  applyIniSchema(fields, count, key, value);
 }
 
 void ConfigStore::parseSettingsLine(char* line) {
-  char* key = nullptr;
-  char* value = nullptr;
-  if (!splitKeyValue(line, &key, &value)) {
-    return;
-  }
-  applyNetSetting(key, value);
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+  using T = IniField::Type;
+  static const IniField fields[] = {
+      {"wifi_mode", T::WifiMode, OFF(wifi_mode_), sizeof(wifi_mode_), 0, 0},
+      {"wifi_ap_ssid", T::Str, OFF(wifi_ap_ssid_), sizeof(wifi_ap_ssid_), 0, 0},
+      {"wifi_ap_pass", T::Str, OFF(wifi_ap_pass_), sizeof(wifi_ap_pass_), 0, 0},
+      {"wifi_ap_channel", T::Int, OFF(wifi_ap_channel_), 0, 1, 13},
+      {"wifi_sta_ssid", T::Str, OFF(wifi_sta_ssid_), sizeof(wifi_sta_ssid_), 0, 0},
+      {"wifi_sta_pass", T::Str, OFF(wifi_sta_pass_), sizeof(wifi_sta_pass_), 0, 0},
+      {"web_port", T::Int, OFF(web_port_), 0, 1, 65535},
+      {"ws_port", T::Int, OFF(ws_port_), 0, 1, 65535},
+      {"ble_serial_mouse_step", T::Ignore, 0, 0, 0, 0},
+      {"ble_device_name", T::Ignore, 0, 0, 0, 0},
+      {"ble_serial_device_name", T::Ignore, 0, 0, 0, 0},
+      {"ble_service_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_char_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_nus_service_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_nus_rx_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_nus_tx_uuid", T::Ignore, 0, 0, 0, 0},
+  };
+  parseSchemaLine(line, fields, sizeof(fields) / sizeof(fields[0]));
+#undef OFF
 }
 
 void ConfigStore::parseBtLine(char* line) {
-  char* key = nullptr;
-  char* value = nullptr;
-  if (!splitKeyValue(line, &key, &value)) {
-    return;
-  }
-  applyBtSetting(key, value);
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+  using T = IniField::Type;
+  static const IniField fields[] = {
+      {"ble_device_name", T::Str, OFF(ble_device_name_), sizeof(ble_device_name_), 0, 0},
+      {"ble_serial_device_name", T::Str, OFF(ble_serial_device_name_), sizeof(ble_serial_device_name_),
+       0, 0},
+      {"ble_serial_mouse_step", T::Ignore, 0, 0, 0, 0},
+      {"ble_service_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_char_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_nus_service_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_nus_rx_uuid", T::Ignore, 0, 0, 0, 0},
+      {"ble_nus_tx_uuid", T::Ignore, 0, 0, 0, 0},
+  };
+  parseSchemaLine(line, fields, sizeof(fields) / sizeof(fields[0]));
+#undef OFF
 }
 
 void ConfigStore::parseMouseLine(char* line) {
-  char* key = nullptr;
-  char* value = nullptr;
-  if (!splitKeyValue(line, &key, &value)) {
-    return;
-  }
-  applyMouseSetting(key, value);
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+  using T = IniField::Type;
+  static const IniField fields[] = {
+      {"ble_serial_mouse_step", T::I8, OFF(ble_serial_mouse_step_), 0, 1, 127},
+      {"touchpad_speed", T::U16, OFF(touchpad_speed_), 0, 25, 300},
+      {"scroll_speed", T::U16, OFF(scroll_speed_), 0, 25, 300},
+      {"two_finger_scroll", T::BoolSet, OFF(two_finger_scroll_), OFF(two_finger_scroll_set_), 0, 0},
+  };
+  parseSchemaLine(line, fields, sizeof(fields) / sizeof(fields[0]));
+#undef OFF
 }
 
 void ConfigStore::parseKeyboardLine(char* line) {
-  char* key = nullptr;
-  char* value = nullptr;
-  if (!splitKeyValue(line, &key, &value)) {
-    return;
-  }
-  applyKeyboardSetting(key, value);
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+  using T = IniField::Type;
+  static const IniField fields[] = {
+      {"char_interval_ms", T::U16, OFF(key_char_interval_ms_), 0, 0, 100},
+  };
+  parseSchemaLine(line, fields, sizeof(fields) / sizeof(fields[0]));
+#undef OFF
 }
 
 void ConfigStore::parseFolderLine(char* line) {
   char* key = nullptr;
   char* value = nullptr;
   if (splitKeyValue(line, &key, &value)) {
-    applyFolderSetting(key, value);
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+    using T = IniField::Type;
+    static const IniField fields[] = {
+        {"volume_label", T::Str, OFF(volume_label_), sizeof(volume_label_), 0, 0},
+        {"nvs_namespace", T::Str, OFF(nvs_namespace_), sizeof(nvs_namespace_), 0, 0},
+    };
+    applyIniSchema(fields, sizeof(fields) / sizeof(fields[0]), key, value);
+#undef OFF
     return;
   }
 
@@ -530,21 +511,54 @@ void ConfigStore::parseFolderLine(char* line) {
 }
 
 void ConfigStore::parseUiLine(char* line) {
-  char* key = nullptr;
-  char* value = nullptr;
-  if (!splitKeyValue(line, &key, &value)) {
-    return;
-  }
-  applyUiSetting(key, value);
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+  using T = IniField::Type;
+  static const IniField fields[] = {
+      {"splash", T::Str, OFF(splash_), sizeof(splash_), 0, 0},
+      {"product_name", T::Str, OFF(splash_), sizeof(splash_), 0, 0},
+      {"splash_ms", T::U32, OFF(splash_ms_), 0, 1, 60000},
+      {"btn_debounce_ms", T::Ignore, 0, 0, 0, 0},
+      {"btn_multi_gap_ms", T::Ignore, 0, 0, 0, 0},
+      {"btn_long_ms", T::Ignore, 0, 0, 0, 0},
+      {"firmware_version", T::Ignore, 0, 0, 0, 0},
+      {"remote_page_title", T::Ignore, 0, 0, 0, 0},
+      {"ble_serial_banner", T::Ignore, 0, 0, 0, 0},
+  };
+  parseSchemaLine(line, fields, sizeof(fields) / sizeof(fields[0]));
+#undef OFF
 }
 
 void ConfigStore::parseDisplayLine(char* line) {
-  char* key = nullptr;
-  char* value = nullptr;
-  if (!splitKeyValue(line, &key, &value)) {
-    return;
+#define OFF(m) static_cast<uint16_t>(offsetof(ConfigStore, m))
+  using T = IniField::Type;
+  static const IniField fields[] = {
+      {"display_brightness", T::U8, OFF(display_brightness_), 0, 5, 100},
+      {"light_brightness", T::U8, OFF(light_brightness_), 0, 5, 100},
+      {"display_sleep_sec", T::U32, OFF(display_sleep_sec_), 0, 0, 86400},
+  };
+  parseSchemaLine(line, fields, sizeof(fields) / sizeof(fields[0]));
+#undef OFF
+}
+
+bool ConfigStore::loadSeededIni(const char* tag, const char* path, const char* seed,
+                               void (ConfigStore::*clear)(), bool (ConfigStore::*fromFile)()) {
+  if (!ready_) {
+    PoSer().printf("CFG: %s unavailable (no LittleFS)\n", tag);
+    (this->*clear)();
+    return false;
   }
-  applyDisplaySetting(key, value);
+  seedFileIfMissing(path, seed);
+  if ((this->*fromFile)()) {
+    return true;
+  }
+  PoSer().printf("CFG: bad %s — re-seeding\n", path);
+  LittleFS.remove(path);
+  seedFileIfMissing(path, seed);
+  if ((this->*fromFile)()) {
+    return true;
+  }
+  (this->*clear)();
+  return false;
 }
 
 bool ConfigStore::loadSettingsFromFile() {
@@ -588,7 +602,7 @@ bool ConfigStore::loadMouseFromFile() {
   forEachLine(f, this, &ConfigStore::parseMouseLine);
   f.close();
   if (touchpad_speed_ == 0) {
-    touchpad_speed_ = 100;
+    touchpad_speed_ = 150;
   }
   if (scroll_speed_ == 0) {
     scroll_speed_ = 100;
@@ -668,102 +682,44 @@ bool ConfigStore::loadDisplayFromFile() {
 }
 
 bool ConfigStore::loadSettings() {
-  if (!ready_) {
-    PoSer().println("CFG: settings unavailable (no LittleFS)");
-    clearSettings();
+  if (!loadSeededIni("settings", kSettingsPath, kSeedSettingsIni, &ConfigStore::clearSettings,
+                     &ConfigStore::loadSettingsFromFile)) {
     return false;
   }
-
-  seedFileIfMissing(kSettingsPath, kSeedSettingsIni);
-  if (loadSettingsFromFile()) {
-    PoSer().printf("CFG: net from %s (ssid=%s)\n", kSettingsPath, wifi_ap_ssid_);
-    return true;
-  }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kSettingsPath);
-  LittleFS.remove(kSettingsPath);
-  seedFileIfMissing(kSettingsPath, kSeedSettingsIni);
-  if (loadSettingsFromFile()) {
-    return true;
-  }
-  clearSettings();
-  return false;
+  PoSer().printf("CFG: net from %s (ssid=%s)\n", kSettingsPath, wifi_ap_ssid_);
+  return true;
 }
 
 bool ConfigStore::loadBluetooth() {
-  if (!ready_) {
-    PoSer().println("CFG: bluetooth unavailable (no LittleFS)");
-    clearBluetooth();
+  if (!loadSeededIni("bluetooth", kBtPath, kSeedBtIni, &ConfigStore::clearBluetooth,
+                     &ConfigStore::loadBluetoothFromFile)) {
     return false;
   }
-
-  seedFileIfMissing(kBtPath, kSeedBtIni);
-  if (loadBluetoothFromFile()) {
-    PoSer().printf("CFG: bt from %s (remote=%s serial=%s)\n", kBtPath, ble_device_name_,
-                  ble_serial_device_name_);
-    return true;
-  }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kBtPath);
-  LittleFS.remove(kBtPath);
-  seedFileIfMissing(kBtPath, kSeedBtIni);
-  if (loadBluetoothFromFile()) {
-    return true;
-  }
-  clearBluetooth();
-  return false;
+  PoSer().printf("CFG: bt from %s (remote=%s serial=%s)\n", kBtPath, ble_device_name_,
+                ble_serial_device_name_);
+  return true;
 }
 
 bool ConfigStore::loadMouse() {
-  if (!ready_) {
-    PoSer().println("CFG: mouse unavailable (no LittleFS)");
-    clearMouse();
+  if (!loadSeededIni("mouse", kMousePath, kSeedMouseIni, &ConfigStore::clearMouse,
+                     &ConfigStore::loadMouseFromFile)) {
     return false;
   }
-
-  seedFileIfMissing(kMousePath, kSeedMouseIni);
-  if (loadMouseFromFile()) {
-    PoSer().printf("CFG: mouse from %s (step=%d speed=%u scroll_spd=%u scroll=%d)\n", kMousePath,
-                  static_cast<int>(ble_serial_mouse_step_),
-                  static_cast<unsigned>(touchpad_speed_),
-                  static_cast<unsigned>(scroll_speed_), two_finger_scroll_ ? 1 : 0);
-    return true;
-  }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kMousePath);
-  LittleFS.remove(kMousePath);
-  seedFileIfMissing(kMousePath, kSeedMouseIni);
-  if (loadMouseFromFile()) {
-    return true;
-  }
-  clearMouse();
-  return false;
+  PoSer().printf("CFG: mouse from %s (step=%d speed=%u scroll_spd=%u scroll=%d)\n", kMousePath,
+                static_cast<int>(ble_serial_mouse_step_), static_cast<unsigned>(touchpad_speed_),
+                static_cast<unsigned>(scroll_speed_), two_finger_scroll_ ? 1 : 0);
+  return true;
 }
 
 bool ConfigStore::loadKeyboard() {
-  if (!ready_) {
-    PoSer().println("CFG: keyboard unavailable (no LittleFS)");
-    clearKeyboard();
+  if (!loadSeededIni("keyboard", kKeyboardPath, kSeedKeyboardIni, &ConfigStore::clearKeyboard,
+                     &ConfigStore::loadKeyboardFromFile)) {
     key_char_interval_ms_ = 12;
     return false;
   }
-
-  seedFileIfMissing(kKeyboardPath, kSeedKeyboardIni);
-  if (loadKeyboardFromFile()) {
-    PoSer().printf("CFG: keyboard from %s (char_interval_ms=%u)\n", kKeyboardPath,
-                  static_cast<unsigned>(key_char_interval_ms_));
-    return true;
-  }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kKeyboardPath);
-  LittleFS.remove(kKeyboardPath);
-  seedFileIfMissing(kKeyboardPath, kSeedKeyboardIni);
-  if (loadKeyboardFromFile()) {
-    return true;
-  }
-  clearKeyboard();
-  key_char_interval_ms_ = 12;
-  return false;
+  PoSer().printf("CFG: keyboard from %s (char_interval_ms=%u)\n", kKeyboardPath,
+                static_cast<unsigned>(key_char_interval_ms_));
+  return true;
 }
 
 bool ConfigStore::loadFormatFolders() {
@@ -772,77 +728,36 @@ bool ConfigStore::loadFormatFolders() {
     PoSer().println("CFG: folders unavailable (no LittleFS)");
     return false;
   }
-
-  seedFileIfMissing(kFoldersPath, kSeedFoldersIni);
-  if (loadFoldersFromFile()) {
-    PoSer().printf("CFG: sd from %s (label=%s folders=%u)\n", kFoldersPath, volume_label_,
-                  static_cast<unsigned>(folder_count_));
-    return true;
+  if (!loadSeededIni("folders", kFoldersPath, kSeedFoldersIni, &ConfigStore::clearFolders,
+                     &ConfigStore::loadFoldersFromFile)) {
+    return false;
   }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kFoldersPath);
-  LittleFS.remove(kFoldersPath);
-  seedFileIfMissing(kFoldersPath, kSeedFoldersIni);
-  if (loadFoldersFromFile()) {
-    return true;
-  }
-  clearFolders();
-  return false;
+  PoSer().printf("CFG: sd from %s (label=%s folders=%u)\n", kFoldersPath, volume_label_,
+                static_cast<unsigned>(folder_count_));
+  return true;
 }
 
 bool ConfigStore::loadUi() {
-  if (!ready_) {
-    PoSer().println("CFG: ui unavailable (no LittleFS)");
-    clearUi();
+  if (!loadSeededIni("ui", kUiPath, kSeedUiIni, &ConfigStore::clearUi, &ConfigStore::loadUiFromFile)) {
     return false;
   }
-
-  seedFileIfMissing(kUiPath, kSeedUiIni);
-  if (loadUiFromFile()) {
-    PoSer().printf("CFG: ui from %s (splash=%s)\n", kUiPath, splashText());
-    return true;
-  }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kUiPath);
-  LittleFS.remove(kUiPath);
-  seedFileIfMissing(kUiPath, kSeedUiIni);
-  if (loadUiFromFile()) {
-    return true;
-  }
-  clearUi();
-  return false;
+  PoSer().printf("CFG: ui from %s (splash=%s)\n", kUiPath, splashText());
+  return true;
 }
 
 bool ConfigStore::loadDisplay() {
-  if (!ready_) {
-    PoSer().println("CFG: display unavailable (no LittleFS)");
-    clearDisplay();
+  if (!loadSeededIni("display", kDisplayPath, kSeedDisplayIni, &ConfigStore::clearDisplay,
+                     &ConfigStore::loadDisplayFromFile)) {
     display_brightness_ = 80;
     light_brightness_ = 44;
     display_sleep_sec_ = 0;
     return false;
   }
-
-  seedFileIfMissing(kDisplayPath, kSeedDisplayIni);
-  if (loadDisplayFromFile()) {
-    PoSer().printf("CFG: display from %s (bl=%u led=%u sleep=%us)\n", kDisplayPath,
-                  static_cast<unsigned>(display_brightness_),
-                  static_cast<unsigned>(light_brightness_),
-                  static_cast<unsigned>(display_sleep_sec_));
-    return true;
-  }
-
-  PoSer().printf("CFG: bad %s — re-seeding\n", kDisplayPath);
-  LittleFS.remove(kDisplayPath);
-  seedFileIfMissing(kDisplayPath, kSeedDisplayIni);
-  if (loadDisplayFromFile()) {
-    return true;
-  }
-  clearDisplay();
-  display_brightness_ = 80;
-  light_brightness_ = 44;
-  display_sleep_sec_ = 0;
-  return false;
+  PoSer().printf("CFG: display from %s (bl=%u led=%u sleep=%us)\n", kDisplayPath,
+                static_cast<unsigned>(display_brightness_),
+                static_cast<unsigned>(light_brightness_),
+                static_cast<unsigned>(display_sleep_sec_));
+  return true;
 }
 
 const char* ConfigStore::splashText() const {

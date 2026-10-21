@@ -4,17 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-namespace storage {
+#include "storage/LanHost.h"
 
-struct LanHostRec {
-  char ip[16] = {};
-  char mac[18] = {};
-  char hostname[40] = {};
-  char vendor[24] = {};
-  char notes[64] = {};
-  char open_ports[96] = {};
-  int rtt_ms = -1;
-};
+namespace storage {
 
 // On-device (LittleFS) LAN scan profiles keyed by Wi‑Fi AP BSSID.
 // Max 100; oldest by last_used evicted. Not stored on SD / not in backup.
@@ -39,11 +31,11 @@ class LanProfiles {
   int indexOf(const char* bssid) const;
 
   // Load hosts for BSSID into out[0..*out_count). Returns false if missing.
-  bool loadHosts(const char* bssid, LanHostRec* out, size_t max_out, size_t* out_count,
-                 char* ssid_out, size_t ssid_len);
+  bool loadHosts(const char* bssid, LanHost* out, size_t max_out, size_t* out_count, char* ssid_out,
+                 size_t ssid_len);
 
   // Save / update profile for bssid. Evicts oldest if at capacity and new.
-  bool saveProfile(const char* bssid, const char* ssid, const LanHostRec* hosts, size_t host_count);
+  bool saveProfile(const char* bssid, const char* ssid, const LanHost* hosts, size_t host_count);
 
   bool setHostNote(const char* bssid, const char* host_mac, const char* note);
 

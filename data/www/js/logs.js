@@ -1,4 +1,4 @@
-import { setMsg, esc } from './util.js';
+import { setMsg, esc, apiJson } from './util.js';
 
 let selectedName = '';
 
@@ -15,9 +15,7 @@ async function loadLogsList() {
   if (!list) return;
   list.innerHTML = '<p class="hint" style="text-align:left">Loading…</p>';
   try {
-    const r = await fetch('/api/logs');
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    const d = await apiJson('/api/logs');
     const en = $('logs-enable');
     if (en) en.checked = d.enabled !== false;
     const ser = $('logs-serial');

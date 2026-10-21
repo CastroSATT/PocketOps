@@ -24,9 +24,9 @@ UsbConsole& UsbConsole::instance() {
 
 void UsbConsole::load() {
   Preferences prefs;
-  enabled_ = true;
+  enabled_ = false;
   if (prefs.begin(ConfigStore::instance().nvsNamespace(), true)) {
-    enabled_ = prefs.getBool("ser_on", true);
+    enabled_ = prefs.getBool("ser_on", false);
     prefs.end();
   }
   loaded_ = true;

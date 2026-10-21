@@ -7,7 +7,7 @@
 namespace branding {
 
 constexpr const char* kName = "PocketOps";
-constexpr const char* kFirmwareVersion = "0.2.1";
+constexpr const char* kFirmwareVersion = "0.2.2";
 constexpr const char* kRemotePageTitle = "PocketOps Remote";
 // BLE advertise names are editable on-device (Config → Bluetooth / pocketops_bt.ini).
 constexpr const char* kBleSerialBanner = "PocketOps Serial";

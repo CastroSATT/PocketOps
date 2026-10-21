@@ -1,8 +1,9 @@
 import {
   state, clearDirty, setMsg, esc, cssEsc, grabField, setWifiModeBadge, updateStaChrome,
   signalBarsHtml, signalText, wifiLockHtml, wifiSavedHtml, wifiAutoHtml,
-  cfgFields, fieldHtml, bindDirty
+  cfgFields, fieldHtml, bindDirty, fetchChrome, chromeWifi, chromeSd
 } from './util.js';
+import { applyChromeSd } from './sd.js';
 
 export const SOFTAP_ROW_ID = '__pocketops_softap__';
 
@@ -542,10 +543,9 @@ export async function refreshWifiProfiles(){
 
 export async function refreshWifiStatus(){
   try{
-    const r=await fetch('/api/wifi/status');
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
-    applyWifiStatus(d);
+    const d=await fetchChrome();
+    applyWifiStatus(chromeWifi(d));
+    applyChromeSd(chromeSd(d));
   }catch(err){
     const el=document.getElementById('wifi-status');
     if(el){el.className='bad';el.textContent=String(err.message||err);}
@@ -573,9 +573,10 @@ export async function scanWifi(opts){
     if(!list)return;
     let connected='';
     try{
-      const sr=await fetch('/api/wifi/status');
-      const sd=await sr.json();
-      if(sr.ok&&sd.sta_connected)connected=sd.connected_ssid||'';
+      const chrome=await fetchChrome();
+      const w=chromeWifi(chrome);
+      if(w.sta_connected)connected=w.connected_ssid||'';
+      applyChromeSd(chromeSd(chrome));
     }catch(_){}
     paintWifiScan(nets,connected);
     setMsg(nets.length?'Found '+nets.length+' networks':'No networks','ok');
@@ -627,16 +628,18 @@ export async function connectWifi(ssid,pass,opts){
       await refreshWifiStatus();
       return;
     }
-    networkKvCache.wifi_sta_ssid=d.connected_ssid||d.sta_ssid||ssid;
+    const w=chromeWifi(d);
+    networkKvCache.wifi_sta_ssid=w.connected_ssid||w.sta_ssid||ssid;
     networkKvCache.wifi_sta_pass=pass;
-    networkKvCache.wifi_mode=d.mode||'apsta';
+    networkKvCache.wifi_mode=w.mode||'apsta';
     if(modeEl)modeEl.value=networkKvCache.wifi_mode;
     setJoinButtonUi('Connected','ok',{busy:false,source});
-    setMsg('Joined & saved '+(d.connected_ssid||ssid)+' — mode SoftAP+join kept for boot','ok');
+    setMsg('Joined & saved '+(w.connected_ssid||ssid)+' — mode SoftAP+join kept for boot','ok');
     clearDirty();
     setProfilesModalOpen(false);
     await refreshWifiProfiles();
-    applyWifiStatus(d);
+    applyWifiStatus(w);
+    applyChromeSd(chromeSd(d));
     setTimeout(()=>{
       if(openWifiSsid===ssid){
         openWifiSsid='';

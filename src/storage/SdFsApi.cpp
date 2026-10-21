@@ -4,6 +4,7 @@
 #include <WiFiClient.h>
 #include <cstring>
 
+#include "http/HttpCtx.h"
 #include "storage/DeviceLog.h"
 #include "storage/TfExpose.h"
 #include "util/JsonEsc.h"
@@ -11,7 +12,7 @@
 namespace storage {
 namespace {
 
-WebServer* g_http = nullptr;
+using http::g_http;
 File g_upload_file;
 char g_upload_path[96] = {};
 bool g_upload_ok = false;
@@ -367,7 +368,7 @@ void handleUploadPost() {
 }  // namespace
 
 void registerSdFsRoutes(WebServer& http) {
-  g_http = &http;
+  http::setServer(&http);
   http.on("/api/sd/files-ui", HTTP_POST, handleFilesUiPost);
   http.on("/api/sd/fs/list", HTTP_GET, handleListGet);
   http.on("/api/sd/fs/mkdir", HTTP_POST, handleMkdirPost);

@@ -1,4 +1,66 @@
-export const statusEl = document.getElementById('status');
+export const appTitleEl = document.getElementById('app-title');
+
+/**
+ * Shared fetch → JSON helper for SoftAP APIs.
+ * opts.timeoutMs (default 20000), opts.timeoutMsg, plus normal fetch init fields.
+ */
+export async function apiJson(url, opts) {
+  const o = opts || {};
+  const timeoutMs = o.timeoutMs != null ? o.timeoutMs : 20000;
+  const timeoutMsg = o.timeoutMsg || 'Request timed out';
+  const fetchOpts = Object.assign({}, o);
+  delete fetchOpts.timeoutMs;
+  delete fetchOpts.timeoutMsg;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, Object.assign({}, fetchOpts, { signal: ctrl.signal }));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const err = (d && (d.error || d.message)) || r.statusText || ('HTTP ' + r.status);
+      throw new Error(err);
+    }
+    return d;
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error(timeoutMsg);
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Unified header chrome: `{ wifi, sd }` from GET /api/chrome. */
+export async function fetchChrome(opts) {
+  return apiJson('/api/chrome', Object.assign({ timeoutMs: 8000 }, opts || {}));
+}
+
+/** Prefer nested `wifi` (chrome / connect); accept flat body only if already unwrapped. */
+export function chromeWifi(d) {
+  if (!d) return {};
+  return d.wifi && typeof d.wifi === 'object' ? d.wifi : d;
+}
+
+export function chromeSd(d) {
+  if (!d) return {};
+  return d.sd && typeof d.sd === 'object' ? d.sd : {};
+}
+
+/** Paint header title as connection traffic light: ok / warn / bad. */
+export function setLinkStatus(state) {
+  if (!appTitleEl) return;
+  appTitleEl.classList.remove('link-ok', 'link-warn', 'link-bad');
+  if (state === 'ok') {
+    appTitleEl.classList.add('link-ok');
+    appTitleEl.title = 'Connected';
+  } else if (state === 'bad') {
+    appTitleEl.classList.add('link-bad');
+    appTitleEl.title = 'Reconnecting…';
+  } else {
+    appTitleEl.classList.add('link-warn');
+    appTitleEl.title = 'Connecting…';
+  }
+}
+
 export const wifiModeBadge = document.getElementById('wifi-mode-badge');
 export const sdBadge = document.getElementById('sd-badge');
 export const textEl = document.getElementById('text');
@@ -160,9 +222,11 @@ export function showView(mode) {
   if (logsView) logsView.classList.toggle('active', mode === 'logs');
   const backupView = document.getElementById('view-backup');
   if (backupView) backupView.classList.toggle('active', mode === 'backup');
+  const firmwareView = document.getElementById('view-firmware');
+  if (firmwareView) firmwareView.classList.toggle('active', mode === 'firmware');
   const save = document.getElementById('cfg-save');
   const reload = document.getElementById('cfg-reload');
-  const hideActions = mode === 'info' || mode === 'backup' || mode === 'logs';
+  const hideActions = mode === 'info' || mode === 'backup' || mode === 'logs' || mode === 'firmware';
   if (save) save.style.display = hideActions ? 'none' : '';
   // Network has its own Wi-Fi scan refresh — hide generic Reload there.
   if (reload) reload.style.display = (hideActions || mode === 'network') ? 'none' : '';
@@ -249,6 +313,7 @@ export function updateStaChrome(d) {
           p.classList.toggle('active', p.id === 'panel-remote');
         });
         import('./lan.js').then(m => m.leaveLanPanel()).catch(() => {});
+        import('./remote.js').then(m => m.enterRemotePanel()).catch(() => {});
       }
     }
   }

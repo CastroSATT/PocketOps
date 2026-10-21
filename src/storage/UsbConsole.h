@@ -23,7 +23,7 @@ class UsbConsole {
   void persist();
   void load();
 
-  bool enabled_ = true;
+  bool enabled_ = false;  // muted by default — enable in Config → Logs
   bool loaded_ = false;
 };
 

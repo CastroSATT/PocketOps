@@ -9,6 +9,7 @@
 #include "storage/BootPrefs.h"
 #include "storage/ConfigStore.h"
 #include "storage/DeviceLog.h"
+#include "storage/FirmwareUpdate.h"
 #include "storage/LanProfiles.h"
 #include "storage/TfExpose.h"
 #include "storage/UsbConsole.h"
@@ -18,8 +19,8 @@ namespace storage {
 namespace {
 
 struct BackupFile {
-  const char* name;  // basename in zip
-  const char* path;  // LittleFS path
+  const char* name;
+  const char* path;
 };
 
 constexpr BackupFile kFiles[] = {
@@ -34,11 +35,11 @@ constexpr BackupFile kFiles[] = {
 };
 
 constexpr const char* kPrefsName = "pocketops_prefs.ini";
-
 constexpr size_t kFileCount = sizeof(kFiles) / sizeof(kFiles[0]);
+constexpr size_t kIoChunk = 512;
 
-uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t len) {
-  crc = ~crc;
+/** Running CRC (init with 0xFFFFFFFF; finalize with ~crc). */
+uint32_t crc32Run(uint32_t crc, const uint8_t* data, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     crc ^= data[i];
     for (int b = 0; b < 8; ++b) {
@@ -46,61 +47,142 @@ uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t len) {
       crc = (crc >> 1) ^ (0xEDB88320u & mask);
     }
   }
-  return ~crc;
+  return crc;
 }
 
-void appendU16(std::vector<uint8_t>& out, uint16_t v) {
-  out.push_back(static_cast<uint8_t>(v & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+uint32_t crc32Update(uint32_t /*seed*/, const uint8_t* data, size_t len) {
+  return ~crc32Run(0xFFFFFFFFu, data, len);
 }
 
-void appendU32(std::vector<uint8_t>& out, uint32_t v) {
-  out.push_back(static_cast<uint8_t>(v & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
-  out.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
-}
-
-bool readFileBytes(const char* path, std::vector<uint8_t>& data) {
-  data.clear();
-  File f = LittleFS.open(path, "r");
-  if (!f) {
-    return false;
+bool writeBytes(File& f, const uint8_t* data, size_t len) {
+  if (!len) {
+    return true;
   }
-  const size_t n = f.size();
-  if (n > ConfigBackup::kMaxZipBytes) {
-    f.close();
-    return false;
-  }
-  data.resize(n);
-  if (n > 0) {
-    const size_t got = f.read(data.data(), n);
-    f.close();
-    if (got != n) {
-      data.clear();
+  return f.write(data, len) == len;
+}
+
+bool writeU16(File& f, uint16_t v) {
+  const uint8_t b[2] = {static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>((v >> 8) & 0xFF)};
+  return writeBytes(f, b, 2);
+}
+
+bool writeU32(File& f, uint32_t v) {
+  const uint8_t b[4] = {static_cast<uint8_t>(v & 0xFF), static_cast<uint8_t>((v >> 8) & 0xFF),
+                        static_cast<uint8_t>((v >> 16) & 0xFF), static_cast<uint8_t>((v >> 24) & 0xFF)};
+  return writeBytes(f, b, 4);
+}
+
+bool readExact(File& f, uint8_t* dst, size_t n) {
+  size_t got = 0;
+  while (got < n) {
+    const size_t r = f.read(dst + got, n - got);
+    if (r == 0) {
       return false;
     }
-  } else {
-    f.close();
+    got += r;
   }
   return true;
 }
 
-void buildPrefsIni(std::vector<uint8_t>& data) {
-  // NVS-backed prefs not stored in LittleFS .ini files.
+uint32_t readU32(const uint8_t* p) {
+  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+         (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+uint16_t readU16(const uint8_t* p) {
+  return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
+}
+
+void setErr(char* err_out, size_t err_len, const char* msg) {
+  if (!err_out || err_len == 0) {
+    return;
+  }
+  strncpy(err_out, msg ? msg : "error", err_len - 1);
+  err_out[err_len - 1] = '\0';
+}
+
+uint32_t crcOfFile(File& f) {
+  const size_t mark = f.position();
+  f.seek(0);
+  uint32_t crc = 0xFFFFFFFFu;
+  uint8_t buf[kIoChunk];
+  while (true) {
+    const size_t n = f.read(buf, sizeof(buf));
+    if (!n) {
+      break;
+    }
+    crc = crc32Run(crc, buf, n);
+  }
+  f.seek(mark);
+  return ~crc;
+}
+
+bool copyFileChunked(File& in, File& out, size_t nbytes) {
+  uint8_t buf[kIoChunk];
+  size_t left = nbytes;
+  while (left) {
+    const size_t want = left > sizeof(buf) ? sizeof(buf) : left;
+    if (!readExact(in, buf, want)) {
+      return false;
+    }
+    if (!writeBytes(out, buf, want)) {
+      return false;
+    }
+    left -= want;
+  }
+  return true;
+}
+
+bool appendLocalEntry(File& out, const char* name, File& body, uint32_t body_len, uint32_t crc,
+                      uint32_t& local_offset_out) {
+  local_offset_out = static_cast<uint32_t>(out.position());
+  const uint16_t name_len = static_cast<uint16_t>(strlen(name));
+  if (!writeU32(out, 0x04034b50u) || !writeU16(out, 20) || !writeU16(out, 0) || !writeU16(out, 0) ||
+      !writeU16(out, 0) || !writeU16(out, 0) || !writeU32(out, crc) || !writeU32(out, body_len) ||
+      !writeU32(out, body_len) || !writeU16(out, name_len) || !writeU16(out, 0) ||
+      !writeBytes(out, reinterpret_cast<const uint8_t*>(name), name_len)) {
+    return false;
+  }
+  if (body_len) {
+    body.seek(0);
+    if (!copyFileChunked(body, out, body_len)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool appendLocalEntryMem(File& out, const char* name, const uint8_t* body, uint32_t body_len,
+                         uint32_t& local_offset_out, uint32_t& crc_out) {
+  local_offset_out = static_cast<uint32_t>(out.position());
+  crc_out = crc32Update(0, body, body_len);
+  const uint16_t name_len = static_cast<uint16_t>(strlen(name));
+  if (!writeU32(out, 0x04034b50u) || !writeU16(out, 20) || !writeU16(out, 0) || !writeU16(out, 0) ||
+      !writeU16(out, 0) || !writeU16(out, 0) || !writeU32(out, crc_out) || !writeU32(out, body_len) ||
+      !writeU32(out, body_len) || !writeU16(out, name_len) || !writeU16(out, 0) ||
+      !writeBytes(out, reinterpret_cast<const uint8_t*>(name), name_len)) {
+    return false;
+  }
+  if (body_len && !writeBytes(out, body, body_len)) {
+    return false;
+  }
+  return true;
+}
+
+void buildPrefsIni(uint8_t* buf, size_t buflen, size_t* out_len) {
   const char* boot = BootPrefs::instance().toolId();
-  char buf[320];
-  snprintf(buf, sizeof(buf),
+  snprintf(reinterpret_cast<char*>(buf), buflen,
            "; PocketOps NVS preferences (restored with .pobak)\n"
-           "; expose_boot / boot_tool / usb_serial / device_log\n"
+           "; expose_boot / boot_tool / usb_serial / device_log / usb_dfu\n"
            "expose_boot=%d\n"
            "boot_tool=%s\n"
            "usb_serial=%d\n"
-           "device_log=%d\n",
+           "device_log=%d\n"
+           "usb_dfu=%d\n",
            TfExpose::instance().bootEnabled() ? 1 : 0, (boot && boot[0]) ? boot : "menu",
-           UsbConsole::instance().enabled() ? 1 : 0, DeviceLog::instance().enabled() ? 1 : 0);
-  const size_t n = strlen(buf);
-  data.assign(buf, buf + n);
+           UsbConsole::instance().enabled() ? 1 : 0, DeviceLog::instance().enabled() ? 1 : 0,
+           FirmwareUpdate::instance().dfuEnabled() ? 1 : 0);
+  *out_len = strlen(reinterpret_cast<char*>(buf));
 }
 
 bool parseBool01(const char* v) {
@@ -114,7 +196,6 @@ bool applyPrefsIni(const uint8_t* data, size_t len) {
   if (!data) {
     return false;
   }
-  // Copy to mutable buffer for line parsing.
   char* buf = static_cast<char*>(malloc(len + 1));
   if (!buf) {
     return false;
@@ -137,7 +218,6 @@ bool applyPrefsIni(const uint8_t* data, size_t len) {
     *eq = '\0';
     char* key = line;
     char* val = eq + 1;
-    // trim key end
     char* ke = key + strlen(key);
     while (ke > key && (ke[-1] == ' ' || ke[-1] == '\t' || ke[-1] == '\r')) {
       *--ke = '\0';
@@ -158,6 +238,8 @@ bool applyPrefsIni(const uint8_t* data, size_t len) {
       UsbConsole::instance().setEnabled(parseBool01(val));
     } else if (strcmp(key, "device_log") == 0) {
       DeviceLog::instance().setEnabled(parseBool01(val));
+    } else if (strcmp(key, "usb_dfu") == 0) {
+      FirmwareUpdate::instance().setDfuEnabled(parseBool01(val));
     }
   }
   free(buf);
@@ -172,12 +254,11 @@ const BackupFile* findAllowlisted(const char* name) {
   if (!name || !name[0]) {
     return nullptr;
   }
-  // Reject paths / traversal
   if (strchr(name, '/') || strchr(name, '\\') || strstr(name, "..")) {
     return nullptr;
   }
   if (isPrefsName(name)) {
-    return nullptr;  // handled separately
+    return nullptr;
   }
   for (size_t i = 0; i < kFileCount; ++i) {
     if (strcmp(name, kFiles[i].name) == 0) {
@@ -201,54 +282,28 @@ bool writeFileBytes(const char* path, const uint8_t* data, size_t len) {
   return true;
 }
 
-uint32_t readU32(const uint8_t* p) {
-  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-         (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-
-uint16_t readU16(const uint8_t* p) {
-  return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
-}
-
-void setErr(char* err_out, size_t err_len, const char* msg) {
-  if (!err_out || err_len == 0) {
-    return;
-  }
-  strncpy(err_out, msg ? msg : "error", err_len - 1);
-  err_out[err_len - 1] = '\0';
-}
-
-bool appendStoreEntry(std::vector<uint8_t>& out, const char* name, const uint8_t* body, size_t body_len,
-                      uint32_t& local_offset, uint32_t& crc_out) {
-  if (out.size() + body_len + 128 > ConfigBackup::kMaxZipBytes) {
-    return false;
-  }
-  local_offset = static_cast<uint32_t>(out.size());
-  crc_out = crc32Update(0, body, body_len);
-  const uint16_t name_len = static_cast<uint16_t>(strlen(name));
-  appendU32(out, 0x04034b50u);
-  appendU16(out, 20);
-  appendU16(out, 0);
-  appendU16(out, 0);
-  appendU16(out, 0);
-  appendU16(out, 0);
-  appendU32(out, crc_out);
-  appendU32(out, static_cast<uint32_t>(body_len));
-  appendU32(out, static_cast<uint32_t>(body_len));
-  appendU16(out, name_len);
-  appendU16(out, 0);
-  out.insert(out.end(), name, name + name_len);
-  if (body_len) {
-    out.insert(out.end(), body, body + body_len);
-  }
-  return true;
+bool ensureConfigDir() {
+  return LittleFS.exists("/config") || LittleFS.mkdir("/config");
 }
 
 }  // namespace
 
-bool ConfigBackup::buildZip(std::vector<uint8_t>& out) {
-  out.clear();
-  out.reserve(4096);
+void ConfigBackup::removeTemp(const char* path) {
+  if (path && LittleFS.exists(path)) {
+    LittleFS.remove(path);
+  }
+}
+
+bool ConfigBackup::buildZipToFile(const char* path) {
+  if (!path || !path[0] || !ensureConfigDir()) {
+    return false;
+  }
+  removeTemp(path);
+
+  File out = LittleFS.open(path, "w");
+  if (!out) {
+    return false;
+  }
 
   struct EntryMeta {
     const char* name;
@@ -256,158 +311,214 @@ bool ConfigBackup::buildZip(std::vector<uint8_t>& out) {
     uint32_t size;
     uint32_t local_offset;
   };
-  // ini files + virtual prefs
   EntryMeta metas[kFileCount + 1];
   size_t meta_n = 0;
+  size_t total = 0;
 
   for (size_t i = 0; i < kFileCount; ++i) {
-    std::vector<uint8_t> body;
-    if (!readFileBytes(kFiles[i].path, body)) {
+    File body = LittleFS.open(kFiles[i].path, "r");
+    if (!body) {
       continue;
     }
-    EntryMeta& m = metas[meta_n];
-    m.name = kFiles[i].name;
-    m.size = static_cast<uint32_t>(body.size());
-    if (!appendStoreEntry(out, m.name, body.data(), body.size(), m.local_offset, m.crc)) {
-      out.clear();
+    const size_t n = body.size();
+    if (n > kMaxEntryBytes || total + n + 128 > kMaxZipBytes) {
+      body.close();
+      out.close();
+      removeTemp(path);
       return false;
     }
+    const uint32_t crc = crcOfFile(body);
+    EntryMeta& m = metas[meta_n];
+    m.name = kFiles[i].name;
+    m.size = static_cast<uint32_t>(n);
+    m.crc = crc;
+    if (!appendLocalEntry(out, m.name, body, m.size, m.crc, m.local_offset)) {
+      body.close();
+      out.close();
+      removeTemp(path);
+      return false;
+    }
+    body.close();
+    total += n + 64;
     ++meta_n;
   }
 
   {
-    std::vector<uint8_t> prefs;
-    buildPrefsIni(prefs);
+    uint8_t prefs[320];
+    size_t prefs_len = 0;
+    buildPrefsIni(prefs, sizeof(prefs), &prefs_len);
     EntryMeta& m = metas[meta_n];
     m.name = kPrefsName;
-    m.size = static_cast<uint32_t>(prefs.size());
-    if (!appendStoreEntry(out, m.name, prefs.data(), prefs.size(), m.local_offset, m.crc)) {
-      out.clear();
+    m.size = static_cast<uint32_t>(prefs_len);
+    if (!appendLocalEntryMem(out, m.name, prefs, m.size, m.local_offset, m.crc)) {
+      out.close();
+      removeTemp(path);
       return false;
     }
     ++meta_n;
   }
 
   if (meta_n == 0) {
-    out.clear();
+    out.close();
+    removeTemp(path);
     return false;
   }
 
-  const uint32_t cd_offset = static_cast<uint32_t>(out.size());
+  const uint32_t cd_offset = static_cast<uint32_t>(out.position());
   for (size_t i = 0; i < meta_n; ++i) {
     const EntryMeta& m = metas[i];
     const uint16_t name_len = static_cast<uint16_t>(strlen(m.name));
-    appendU32(out, 0x02014b50u);
-    appendU16(out, 20);
-    appendU16(out, 20);
-    appendU16(out, 0);
-    appendU16(out, 0);
-    appendU16(out, 0);
-    appendU16(out, 0);
-    appendU32(out, m.crc);
-    appendU32(out, m.size);
-    appendU32(out, m.size);
-    appendU16(out, name_len);
-    appendU16(out, 0);
-    appendU16(out, 0);
-    appendU16(out, 0);
-    appendU16(out, 0);
-    appendU32(out, 0);
-    appendU32(out, m.local_offset);
-    out.insert(out.end(), m.name, m.name + name_len);
+    if (!writeU32(out, 0x02014b50u) || !writeU16(out, 20) || !writeU16(out, 20) || !writeU16(out, 0) ||
+        !writeU16(out, 0) || !writeU16(out, 0) || !writeU16(out, 0) || !writeU32(out, m.crc) ||
+        !writeU32(out, m.size) || !writeU32(out, m.size) || !writeU16(out, name_len) ||
+        !writeU16(out, 0) || !writeU16(out, 0) || !writeU16(out, 0) || !writeU16(out, 0) ||
+        !writeU32(out, 0) || !writeU32(out, m.local_offset) ||
+        !writeBytes(out, reinterpret_cast<const uint8_t*>(m.name), name_len)) {
+      out.close();
+      removeTemp(path);
+      return false;
+    }
   }
-  const uint32_t cd_size = static_cast<uint32_t>(out.size()) - cd_offset;
+  const uint32_t cd_size = static_cast<uint32_t>(out.position()) - cd_offset;
 
-  appendU32(out, 0x06054b50u);
-  appendU16(out, 0);
-  appendU16(out, 0);
-  appendU16(out, static_cast<uint16_t>(meta_n));
-  appendU16(out, static_cast<uint16_t>(meta_n));
-  appendU32(out, cd_size);
-  appendU32(out, cd_offset);
-  appendU16(out, 0);
+  if (!writeU32(out, 0x06054b50u) || !writeU16(out, 0) || !writeU16(out, 0) ||
+      !writeU16(out, static_cast<uint16_t>(meta_n)) || !writeU16(out, static_cast<uint16_t>(meta_n)) ||
+      !writeU32(out, cd_size) || !writeU32(out, cd_offset) || !writeU16(out, 0)) {
+    out.close();
+    removeTemp(path);
+    return false;
+  }
 
-  return !out.empty();
+  out.close();
+  return true;
 }
 
-bool ConfigBackup::applyZip(const uint8_t* data, size_t len, char* err_out, size_t err_len) {
-  if (!data || len < 22 || len > kMaxZipBytes) {
+bool ConfigBackup::applyZipFromFile(const char* path, char* err_out, size_t err_len) {
+  if (!path || !path[0]) {
+    setErr(err_out, err_len, "Invalid or too large zip");
+    return false;
+  }
+  File f = LittleFS.open(path, "r");
+  if (!f) {
+    setErr(err_out, err_len, "Invalid or too large zip");
+    return false;
+  }
+  const size_t len = f.size();
+  if (len < 22 || len > kMaxZipBytes) {
+    f.close();
     setErr(err_out, err_len, "Invalid or too large zip");
     return false;
   }
 
   size_t restored = 0;
-  size_t pos = 0;
-  while (pos + 30 <= len) {
-    if (readU32(data + pos) != 0x04034b50u) {
+  while (f.position() + 30 <= len) {
+    uint8_t hdr[30];
+    if (!readExact(f, hdr, 30)) {
       break;
     }
-    const uint16_t method = readU16(data + pos + 8);
-    const uint32_t crc_exp = readU32(data + pos + 14);
-    const uint32_t comp_size = readU32(data + pos + 18);
-    const uint32_t uncomp_size = readU32(data + pos + 22);
-    const uint16_t name_len = readU16(data + pos + 26);
-    const uint16_t extra_len = readU16(data + pos + 28);
-    const size_t name_off = pos + 30;
-    const size_t data_off = name_off + name_len + extra_len;
-    if (name_off + name_len > len || data_off + comp_size > len) {
-      setErr(err_out, err_len, "Truncated zip entry");
-      return false;
+    if (readU32(hdr) != 0x04034b50u) {
+      break;
     }
+    const uint16_t method = readU16(hdr + 8);
+    const uint32_t crc_exp = readU32(hdr + 14);
+    const uint32_t comp_size = readU32(hdr + 18);
+    const uint32_t uncomp_size = readU32(hdr + 22);
+    const uint16_t name_len = readU16(hdr + 26);
+    const uint16_t extra_len = readU16(hdr + 28);
+
     if (method != 0) {
+      f.close();
       setErr(err_out, err_len, "Only uncompressed (store) zip supported");
       return false;
     }
-    if (comp_size != uncomp_size) {
+    if (comp_size != uncomp_size || uncomp_size > kMaxEntryBytes) {
+      f.close();
       setErr(err_out, err_len, "Corrupt zip sizes");
+      return false;
+    }
+    if (name_len == 0 || name_len >= 96) {
+      f.close();
+      setErr(err_out, err_len, "Bad entry name");
       return false;
     }
 
     char name[96];
-    if (name_len == 0 || name_len >= sizeof(name)) {
-      setErr(err_out, err_len, "Bad entry name");
+    if (!readExact(f, reinterpret_cast<uint8_t*>(name), name_len)) {
+      f.close();
+      setErr(err_out, err_len, "Truncated zip entry");
       return false;
     }
-    memcpy(name, data + name_off, name_len);
     name[name_len] = '\0';
+    if (extra_len) {
+      if (f.position() + extra_len > len) {
+        f.close();
+        setErr(err_out, err_len, "Truncated zip entry");
+        return false;
+      }
+      f.seek(f.position() + extra_len);
+    }
+
+    uint8_t* payload = nullptr;
+    if (uncomp_size) {
+      payload = static_cast<uint8_t*>(malloc(uncomp_size));
+      if (!payload) {
+        f.close();
+        setErr(err_out, err_len, "Out of memory");
+        return false;
+      }
+      if (!readExact(f, payload, uncomp_size)) {
+        free(payload);
+        f.close();
+        setErr(err_out, err_len, "Truncated zip entry");
+        return false;
+      }
+    }
+
+    const uint32_t crc = crc32Update(0, payload, uncomp_size);
+    if (crc != crc_exp) {
+      free(payload);
+      f.close();
+      setErr(err_out, err_len, "CRC mismatch");
+      return false;
+    }
 
     const char* base = name;
     if (strncmp(name, "config/", 7) == 0) {
       base = name + 7;
     }
 
-    const uint8_t* payload = data + data_off;
-    const uint32_t crc = crc32Update(0, payload, uncomp_size);
-    if (crc != crc_exp) {
-      setErr(err_out, err_len, "CRC mismatch");
-      return false;
-    }
-
+    bool ok_entry = true;
     if (isPrefsName(base)) {
-      if (!applyPrefsIni(payload, uncomp_size)) {
+      ok_entry = applyPrefsIni(payload, uncomp_size);
+      if (ok_entry) {
+        ++restored;
+      } else {
+        free(payload);
+        f.close();
         setErr(err_out, err_len, "Prefs restore failed");
         return false;
       }
-      ++restored;
     } else {
       const BackupFile* slot = findAllowlisted(base);
       if (slot) {
         if (!writeFileBytes(slot->path, payload, uncomp_size)) {
+          free(payload);
+          f.close();
           setErr(err_out, err_len, "Write failed");
           return false;
         }
         ++restored;
       }
     }
-
-    pos = data_off + comp_size;
+    free(payload);
+    (void)ok_entry;
   }
 
+  f.close();
   if (restored == 0) {
     setErr(err_out, err_len, "No known config files in zip");
     return false;
   }
-
   setErr(err_out, err_len, "OK");
   return true;
 }
@@ -429,8 +540,9 @@ bool ConfigBackup::factoryReset(const FactoryResetOpts& opts, char* err_out, siz
   if (opts.nvs_prefs) {
     TfExpose::instance().setBootEnabled(false);
     BootPrefs::instance().setToolId("menu");
-    UsbConsole::instance().setEnabled(true);
-    DeviceLog::instance().setEnabled(true);
+    UsbConsole::instance().setEnabled(false);
+    DeviceLog::instance().setEnabled(false);
+    FirmwareUpdate::instance().setDfuEnabled(false);
   }
 
   if (opts.wifi_profiles) {

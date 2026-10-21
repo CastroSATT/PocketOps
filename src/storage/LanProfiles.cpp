@@ -225,7 +225,7 @@ void LanProfiles::touch(const char* bssid) {
   saveIndex();
 }
 
-bool LanProfiles::loadHosts(const char* bssid, LanHostRec* out, size_t max_out, size_t* out_count,
+bool LanProfiles::loadHosts(const char* bssid, LanHost* out, size_t max_out, size_t* out_count,
                             char* ssid_out, size_t ssid_len) {
   if (out_count) {
     *out_count = 0;
@@ -271,7 +271,7 @@ bool LanProfiles::loadHosts(const char* bssid, LanHostRec* out, size_t max_out, 
       parts[pi] = rest.substring(start, bar);
       start = bar + 1;
     }
-    LanHostRec& h = out[n];
+    LanHost& h = out[n];
     h = {};
     strncpy(h.ip, parts[0].c_str(), sizeof(h.ip) - 1);
     strncpy(h.mac, parts[1].c_str(), sizeof(h.mac) - 1);
@@ -294,7 +294,7 @@ bool LanProfiles::loadHosts(const char* bssid, LanHostRec* out, size_t max_out, 
   return true;
 }
 
-bool LanProfiles::saveProfile(const char* bssid, const char* ssid, const LanHostRec* hosts,
+bool LanProfiles::saveProfile(const char* bssid, const char* ssid, const LanHost* hosts,
                               size_t host_count) {
   char norm[kBssidLen];
   normalizeBssid(bssid, norm, sizeof(norm));
@@ -334,7 +334,7 @@ bool LanProfiles::saveProfile(const char* bssid, const char* ssid, const LanHost
   f.printf("USED=%lu\n", static_cast<unsigned long>(last_used_[idx]));
   const size_t n = host_count > kMaxHosts ? kMaxHosts : host_count;
   for (size_t i = 0; i < n && hosts; ++i) {
-    const LanHostRec& h = hosts[i];
+    const LanHost& h = hosts[i];
     f.printf("H|%s|%s|%s|%s|%d|%s|%s\n", h.ip, h.mac, h.hostname, h.vendor, h.rtt_ms, h.notes,
              h.open_ports);
   }
@@ -344,7 +344,7 @@ bool LanProfiles::saveProfile(const char* bssid, const char* ssid, const LanHost
 
 bool LanProfiles::setHostNote(const char* bssid, const char* host_mac, const char* note) {
   // Heap — avoid ~10KB stack spike without permanent BSS.
-  LanHostRec* hosts = static_cast<LanHostRec*>(malloc(sizeof(LanHostRec) * kMaxHosts));
+  LanHost* hosts = static_cast<LanHost*>(malloc(sizeof(LanHost) * kMaxHosts));
   if (!hosts) {
     return false;
   }
@@ -356,7 +356,7 @@ bool LanProfiles::setHostNote(const char* bssid, const char* host_mac, const cha
     if (!host_mac || !host_mac[0]) {
       return false;
     }
-    LanHostRec one = {};
+    LanHost one = {};
     strncpy(one.mac, host_mac, sizeof(one.mac) - 1);
     if (note) {
       strncpy(one.notes, note, sizeof(one.notes) - 1);

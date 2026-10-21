@@ -1,10 +1,10 @@
 #include "tools/bt_remote_hid/BleHidServer.h"
 
 #include <BLEDevice.h>
-#include <BLEServer.h>
 #include <BLEUtils.h>
 #include <cstring>
 
+#include "ble/BleGattBoot.h"
 #include "hid/HidProtocol.h"
 #include "hid/UsbHid.h"
 #include "storage/ConfigStore.h"
@@ -14,24 +14,14 @@ namespace {
 bt_remote_hid::BleHidServer* g_ble = nullptr;
 BLEServer* g_server = nullptr;
 BLECharacteristic* g_char = nullptr;
-bool g_advertising = false;
 
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* /*pServer*/) override {
-    if (g_ble) {
-      g_ble->setClientCount(1);
-    }
+void onClientCount(uint8_t n) {
+  if (g_ble) {
+    g_ble->setClientCount(n);
   }
+}
 
-  void onDisconnect(BLEServer* /*pServer*/) override {
-    if (g_ble) {
-      g_ble->setClientCount(0);
-    }
-    if (g_advertising) {
-      BLEDevice::startAdvertising();
-    }
-  }
-};
+ble::ClientCountCallbacks g_server_cb(onClientCount);
 
 class CharCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic* characteristic) override {
@@ -47,7 +37,6 @@ class CharCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
-ServerCallbacks g_server_cb;
 CharCallbacks g_char_cb;
 
 }  // namespace
@@ -64,9 +53,7 @@ void BleHidServer::begin() {
 
   auto& cfg = storage::ConfigStore::instance();
   cfg.loadSettings();
-  BLEDevice::init(cfg.bleDeviceName());
-  g_server = BLEDevice::createServer();
-  g_server->setCallbacks(&g_server_cb);
+  g_server = ble::initServer(cfg.bleDeviceName(), &g_server_cb);
 
   BLEService* service = g_server->createService(cfg.bleServiceUuid());
   g_char = service->createCharacteristic(
@@ -75,14 +62,7 @@ void BleHidServer::begin() {
   g_char->setCallbacks(&g_char_cb);
 
   service->start();
-
-  BLEAdvertising* advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID(cfg.bleServiceUuid());
-  advertising->setScanResponse(true);
-  advertising->setMinPreferred(0x06);
-  advertising->setMinPreferred(0x12);
-  BLEDevice::startAdvertising();
-  g_advertising = true;
+  ble::startServiceAdvertising(cfg.bleServiceUuid());
 
   hid::UsbHid::instance().begin();
   running_ = true;
@@ -97,11 +77,7 @@ void BleHidServer::end() {
     return;
   }
 
-  g_advertising = false;
-  if (BLEDevice::getAdvertising()) {
-    BLEDevice::getAdvertising()->stop();
-  }
-  BLEDevice::deinit(true);
+  ble::stopAndDeinit();
   g_server = nullptr;
   g_char = nullptr;
   g_ble = nullptr;
